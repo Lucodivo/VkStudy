@@ -28,6 +28,7 @@ public:
 	VkPipelineColorBlendAttachmentState colorBlendAttachment;
 	VkPipelineMultisampleStateCreateInfo multisampling;
 	VkPipelineLayout pipelineLayout;
+	VkPipelineDepthStencilStateCreateInfo depthStencil;
 
 	VkPipeline buildPipeline(VkDevice device, VkRenderPass pass);
 };
@@ -92,20 +93,18 @@ public:
 	VkSemaphore presentSemaphore, renderSemaphore;
 	VkFence renderFence;
 
-	VkPipelineLayout trianglePipelineLayout;
-	VkPipeline coloredTrianglePipeline;
-	VkPipeline redTrianglePipeline;
-
-	int selectedShader{ 0 };
-
 	DeletionQueue mainDeletionQueue;
 
 	VmaAllocator allocator;
 
 	VkPipelineLayout meshPipelineLayout;
-	VkPipeline meshTrianglePipeline;
+	VkPipeline meshPipeline;
 	Mesh triangleMesh;
 	Mesh monkeyMesh;
+
+	VkImageView depthImageView;
+	AllocatedImage depthImage;
+	VkFormat depthFormat;
 
 private:
 	
