@@ -79,7 +79,7 @@ void VulkanEngine::draw()
 
 	// present semaphore is signaled when the presentation engine has finished using the image and
 	// it may now be used as a target for drawing
-	uint32_t swapchainImageIndex;
+	u32 swapchainImageIndex;
 	VK_CHECK(vkAcquireNextImageKHR(device, swapchain, DEFAULT_NANOSEC_TIMEOUT, presentSemaphore, nullptr, &swapchainImageIndex));
 
 	VK_CHECK(vkResetCommandBuffer(mainCommandBuffer, 0));
@@ -271,8 +271,8 @@ void VulkanEngine::initSwapchain()
 	mainDeletionQueue.pushFunction([=]() {
 		vkDestroyImageView(device, depthImageView, nullptr);
 		vmaDestroyImage(allocator, depthImage.image, depthImage.allocation);
-		int swapchainImageCount = swapchainImageViews.size();
-		for (int i = 0; i < swapchainImageCount; i++) {
+		u32 swapchainImageCount = swapchainImageViews.size();
+		for (u32 i = 0; i < swapchainImageCount; i++) {
 			vkDestroyImageView(device, swapchainImageViews[i], nullptr);
 		}
 		vkDestroySwapchainKHR(device, swapchain, nullptr);
@@ -361,9 +361,9 @@ void VulkanEngine::initFramebuffers()
 	fbInfo.height = windowExtent.height;
 	fbInfo.layers = 1;
 
-	const uint32_t swapchainImageCount = swapchainImages.size();
+	const u32 swapchainImageCount = swapchainImages.size();
 	framebuffers = std::vector<VkFramebuffer>(swapchainImageCount);
-	for (int i = 0; i < swapchainImageCount; i++) {
+	for (u32 i = 0; i < swapchainImageCount; i++) {
 		VkImageView attachments[] = { swapchainImageViews[i], depthImageView };
 		fbInfo.pAttachments = attachments;
 		VK_CHECK(vkCreateFramebuffer(device, &fbInfo, nullptr, &framebuffers[i]));
@@ -402,7 +402,7 @@ void VulkanEngine::initPipelines() {
 		materialRedOutline
 	};
 
-	for (int i = 0; i < ArrayCount(matInfos); i++) {
+	for (u32 i = 0; i < ArrayCount(matInfos); i++) {
 		createPipeline(matInfos[i]);
 	}
 }
@@ -462,7 +462,7 @@ void VulkanEngine::createPipeline(MaterialInfo matInfo) {
 
 	mainDeletionQueue.pushFunction([=]() {
 		vkDestroyPipeline(device, pipeline, nullptr);
-		vkDestroyPipelineLayout(device, pipelineLayout, nullptr); // TODO: pipelineLayout is null as it is out of scope
+		vkDestroyPipelineLayout(device, pipelineLayout, nullptr);
 	});
 }
 
@@ -475,11 +475,11 @@ void VulkanEngine::initScene()
 
 	renderables.push_back(monkey);
 
-	for (int x = -20; x <= 20; x++) {
-		for (int y = -20; y <= 20; y++) {
+	for (s32 x = -20; x <= 20; x++) {
+		for (s32 y = -20; y <= 20; y++) {
 
 			RenderObject tri;
-			tri.mesh = getMesh("triangle");
+			tri.mesh = getMesh("cube");
 			tri.material = getMaterial(materialRedOutline.name);
 			glm::mat4 translation = glm::translate(glm::mat4{ 1.0 }, glm::vec3(x, 0, y));
 			glm::mat4 scale = glm::scale(glm::mat4{ 1.0 }, glm::vec3(0.2, 0.2, 0.2));
@@ -494,22 +494,26 @@ void VulkanEngine::loadMeshes()
 {
 	Mesh triangleMesh = {};
 	triangleMesh.vertices.resize(3);
-
 	triangleMesh.vertices[0].position = { 1.f, 1.f, 0.0f };
 	triangleMesh.vertices[1].position = { -1.f, 1.f, 0.0f };
 	triangleMesh.vertices[2].position = { 0.f,-1.f, 0.0f };
-	triangleMesh.vertices[0].color = { 0.f, 1.f, 0.0f };
-	triangleMesh.vertices[1].color = { 0.f, 1.f, 0.0f };
-	triangleMesh.vertices[2].color = { 0.f, 1.f, 0.0f };
+	triangleMesh.vertices[0].normal = { 0.f, 1.f, 0.0f };
+	triangleMesh.vertices[1].normal = { 0.f, 1.f, 0.0f };
+	triangleMesh.vertices[2].normal = { 0.f, 1.f, 0.0f };
 
 	Mesh monkeyMesh = {};
 	monkeyMesh.loadFromObj("../assets/monkey_smooth.obj", "../assets/");
 
+	Mesh cubeMesh = {};
+	cubeMesh.loadFromGltf("../assets/cube.glb", true);
+
 	uploadMesh(triangleMesh);
 	uploadMesh(monkeyMesh);
+	uploadMesh(cubeMesh);
 
 	meshes["monkey"] = monkeyMesh;
 	meshes["triangle"] = triangleMesh;
+	meshes["cube"] = cubeMesh;
 }
 
 void VulkanEngine::uploadMesh(Mesh& mesh)
@@ -571,7 +575,7 @@ Mesh* VulkanEngine::getMesh(const std::string& name)
 	}
 }
 
-void VulkanEngine::drawObjects(VkCommandBuffer cmd, RenderObject* first, int count)
+void VulkanEngine::drawObjects(VkCommandBuffer cmd, RenderObject* first, u32 count)
 {
 	glm::mat4 view = glm::translate(glm::mat4(1.f), cameraPos);
 	glm::mat4 projection = glm::perspective(glm::radians(70.f), 1700.f / 900.f, 0.1f, 200.0f);
@@ -579,7 +583,7 @@ void VulkanEngine::drawObjects(VkCommandBuffer cmd, RenderObject* first, int cou
 
 	Mesh* lastMesh = nullptr;
 	Material* lastMaterial = nullptr;
-	for (int i = 0; i < count; i++)
+	for (u32 i = 0; i < count; i++)
 	{
 		RenderObject& object = first[i];
 
@@ -623,8 +627,7 @@ void VulkanEngine::loadShaderModule(std::string filePath, VkShaderModule* outSha
 	size_t fileSize = (size_t)file.tellg();
 
 	//spirv expects the buffer to be on uint32
-	std::vector<uint32_t> buffer(fileSize / sizeof(uint32_t));
-	//std::vector<uint32_t> buffer((fileSize + (sizeof(uint32_t) - 1)) / sizeof(uint32_t));
+	std::vector<u32> buffer(fileSize / sizeof(u32));
 
 	//put file cursor at beginning
 	file.seekg(0);
@@ -634,7 +637,7 @@ void VulkanEngine::loadShaderModule(std::string filePath, VkShaderModule* outSha
 	VkShaderModuleCreateInfo createInfo = {};
 	createInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
 	createInfo.pNext = nullptr;
-	createInfo.codeSize = buffer.size() * sizeof(uint32_t);
+	createInfo.codeSize = buffer.size() * sizeof(u32);
 	createInfo.pCode = buffer.data();
 
 	//check that the creation goes well

@@ -1,6 +1,9 @@
 #include <vk_mesh.h>
 #include <tiny_obj_loader.h>
+#include <tiny_gltf.h>
 #include <iostream>
+
+#include "types.h"
 
 VertexInputDescription Vertex::getVertexDescriptions()
 {
@@ -26,18 +29,135 @@ VertexInputDescription Vertex::getVertexDescriptions()
 	normalAttribute.format = VK_FORMAT_R32G32B32_SFLOAT;
 	normalAttribute.offset = offsetof(Vertex, normal);
 
-	//Color at Location 2
-	VkVertexInputAttributeDescription colorAttribute = {};
-	colorAttribute.binding = 0;
-	colorAttribute.location = 2;
-	colorAttribute.format = VK_FORMAT_R32G32B32_SFLOAT;
-	colorAttribute.offset = offsetof(Vertex, color);
-
 	description.bindings.push_back(mainBinding);
 	description.attributes.push_back(positionAttribute);
 	description.attributes.push_back(normalAttribute);
-	description.attributes.push_back(colorAttribute);
 	return description;
+}
+
+bool Mesh::loadFromGltf(const char* file, bool glb) {
+	struct gltfAttributeMetadata {
+		u32 accessorIndex;
+		u32 numComponents;
+		u32 bufferViewIndex;
+		u32 bufferIndex;
+		u64 bufferByteOffset;
+		u64 bufferByteLength;
+	};
+
+	const char* positionIndexKeyString = "POSITION";
+	const char* normalIndexKeyString = "NORMAL";
+	const char* texture0IndexKeyString = "TEXCOORD_0";
+	const u32 positionAttributeIndex = 0;
+	const u32 normalAttributeIndex = 1;
+	const u32 texture0AttributeIndex = 2;
+
+	tinygltf::Model gltfModel;
+	tinygltf::TinyGLTF loader;
+	std::string err;
+	std::string warn;
+
+	bool ret;
+	if (!glb) {
+		ret = loader.LoadASCIIFromFile(&gltfModel, &err, &warn, file);
+	}
+	else {
+		ret = loader.LoadBinaryFromFile(&gltfModel, &err, &warn, file);
+	}
+
+
+	if (!warn.empty()) {
+		printf("Warn: %s\n", warn.c_str());
+	}
+
+	if (!err.empty()) {
+		printf("Err: %s\n", err.c_str());
+	}
+
+	if (!ret) {
+		printf("Failed to parse glTF\n");
+		return -1;
+	}
+
+	auto populateAttributeMetadata = [](tinygltf::Model& model, const char* keyString, const tinygltf::Primitive* gltfPrimitive) -> gltfAttributeMetadata {
+		gltfAttributeMetadata result;
+		result.accessorIndex = gltfPrimitive->attributes.at(keyString);
+		result.numComponents = tinygltf::GetNumComponentsInType(model.accessors[result.accessorIndex].type);
+		result.bufferViewIndex = model.accessors[result.accessorIndex].bufferView;
+		result.bufferIndex = model.bufferViews[result.bufferViewIndex].buffer;
+		result.bufferByteOffset = model.bufferViews[result.bufferViewIndex].byteOffset;
+		result.bufferByteLength = model.bufferViews[result.bufferViewIndex].byteLength;
+		return result;
+	};
+
+	Assert(!gltfModel.meshes.empty());
+	u32 meshCount = gltfModel.meshes.size();
+	std::vector<tinygltf::Accessor>* gltfAccessors = &gltfModel.accessors;
+	std::vector<tinygltf::BufferView>* gltfBufferViews = &gltfModel.bufferViews;
+	for (u32 i = 0; i < meshCount; i++) {
+		tinygltf::Mesh* gltfMesh = &gltfModel.meshes[i];
+		Assert(!gltfMesh->primitives.empty());
+		u32 primitiveCount = gltfMesh->primitives.size();
+		for (u32 j = 0; j < primitiveCount; j++) {
+			tinygltf::Primitive* gltfPrimitive = &gltfMesh->primitives[j];
+			Assert(gltfPrimitive->indices > -1);
+			
+			// position attributes
+			Assert(gltfPrimitive->attributes.find(positionIndexKeyString) != gltfPrimitive->attributes.end());
+			gltfAttributeMetadata positionAttribute = populateAttributeMetadata(gltfModel, positionIndexKeyString, gltfPrimitive);
+			Assert(positionAttribute.numComponents == 3);
+
+			// normal attributes
+			bool normalAttributesAvailable = gltfPrimitive->attributes.find(normalIndexKeyString) != gltfPrimitive->attributes.end();
+			Assert(normalAttributesAvailable)
+			gltfAttributeMetadata normalAttribute{};
+			normalAttribute = populateAttributeMetadata(gltfModel, normalIndexKeyString, gltfPrimitive);
+			Assert(positionAttribute.bufferIndex == normalAttribute.bufferIndex);
+			Assert(normalAttribute.numComponents == 3);
+
+			// TODO: texture 0 uv coord attribute data
+			//bool texture0AttributesAvailable = gltfPrimitive->attributes.find(texture0IndexKeyString) != gltfPrimitive->attributes.end();
+			//gltfAttributeMetadata texture0Attribute{};
+			//if (texture0AttributesAvailable) { 
+			//	texture0Attribute = populateAttributeMetadata(gltfModel, texture0IndexKeyString, gltfPrimitive);
+			//	Assert(positionAttribute.bufferIndex == texture0Attribute.bufferIndex);
+			//}
+
+			u32 indicesAccessorIndex = gltfPrimitive->indices;
+			tinygltf::BufferView indicesGLTFBufferView = gltfBufferViews->at(gltfAccessors->at(indicesAccessorIndex).bufferView);
+			u32 indicesGLTFBufferIndex = indicesGLTFBufferView.buffer;
+			u64 indicesGLTFBufferByteOffset = indicesGLTFBufferView.byteOffset;
+			u64 indicesGLTFBufferByteLength = indicesGLTFBufferView.byteLength;
+			u16* indicesDataOffset = (u16*)(gltfModel.buffers[indicesGLTFBufferIndex].data.data() + indicesGLTFBufferByteOffset);
+
+			Assert(gltfModel.buffers.size() > positionAttribute.bufferIndex);
+			f32* positionAttributeData = (f32*)gltfModel.buffers[positionAttribute.bufferIndex].data.data() + positionAttribute.bufferByteOffset;
+			f32* normalAttributeData = (f32*)gltfModel.buffers[normalAttribute.bufferIndex].data.data() + normalAttribute.bufferByteOffset;
+			Assert(positionAttribute.bufferByteLength == normalAttribute.bufferByteLength);
+
+			Vertex vertex{};
+			
+			u32 indexCount = indicesGLTFBufferByteLength / sizeof(u16);
+			u32 vertexCount = positionAttribute.bufferByteLength / positionAttribute.numComponents / sizeof(f32);
+			for (u32 i = 0; i < indexCount; i++) {
+				u16 vertIndex = indicesDataOffset[i];
+
+				Vertex newVert;
+
+				//vertex position
+				newVert.position.x = positionAttributeData[3 * vertIndex + 0];
+				newVert.position.y = positionAttributeData[3 * vertIndex + 1];
+				newVert.position.z = positionAttributeData[3 * vertIndex + 2];
+
+				//vertex normal
+				newVert.normal.x = normalAttributeData[3 * vertIndex + 0];
+				newVert.normal.y = normalAttributeData[3 * vertIndex + 1];
+				newVert.normal.z = normalAttributeData[3 * vertIndex + 2];
+
+				vertices.push_back(newVert);
+			}
+		}
+	}
 }
 
 bool Mesh::loadFromObj(const char* file, const char* materialDir)
@@ -76,27 +196,17 @@ bool Mesh::loadFromObj(const char* file, const char* materialDir)
 				// access to vertex
 				tinyobj::index_t idx = shapes[s].mesh.indices[index_offset + v];
 
-				//vertex position
-				tinyobj::real_t vx = attrib.vertices[3 * idx.vertex_index + 0];
-				tinyobj::real_t vy = attrib.vertices[3 * idx.vertex_index + 1];
-				tinyobj::real_t vz = attrib.vertices[3 * idx.vertex_index + 2];
-				//vertex normal
-				tinyobj::real_t nx = attrib.normals[3 * idx.normal_index + 0];
-				tinyobj::real_t ny = attrib.normals[3 * idx.normal_index + 1];
-				tinyobj::real_t nz = attrib.normals[3 * idx.normal_index + 2];
-
-				//copy it into our vertex
 				Vertex newVert;
-				newVert.position.x = vx;
-				newVert.position.y = vy;
-				newVert.position.z = vz;
 
-				newVert.normal.x = nx;
-				newVert.normal.y = ny;
-				newVert.normal.z = nz;
+				//vertex position
+				newVert.position.x = attrib.vertices[3 * idx.vertex_index + 0];
+				newVert.position.y = attrib.vertices[3 * idx.vertex_index + 1];
+				newVert.position.z = attrib.vertices[3 * idx.vertex_index + 2];
 
-				//we are setting the vertex color as the vertex normal. This is just for display purposes
-				newVert.color = newVert.normal;
+				//vertex normal
+				newVert.normal.x = attrib.normals[3 * idx.normal_index + 0];
+				newVert.normal.y = attrib.normals[3 * idx.normal_index + 1];
+				newVert.normal.z = attrib.normals[3 * idx.normal_index + 2];
 
 				vertices.push_back(newVert);
 			}

@@ -15,7 +15,6 @@ struct VertexInputDescription {
 struct Vertex {
     glm::vec3 position;
     glm::vec3 normal;
-    glm::vec3 color;
 
     static VertexInputDescription getVertexDescriptions();
 };
@@ -24,6 +23,8 @@ struct Mesh {
     std::vector<Vertex> vertices;
 
     AllocatedBuffer vertexBuffer;
+
+    bool loadFromGltf(const char* file, bool glb = false);
 
     bool loadFromObj(const char* filename, const char* directory);
 };

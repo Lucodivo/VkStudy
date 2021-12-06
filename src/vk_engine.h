@@ -11,8 +11,7 @@
 #include <glm/glm.hpp>
 #include "vk_mesh.h"
 #include "materials.h"
-
-#define ArrayCount(Array) (sizeof(Array) / sizeof((Array)[0]))
+#include "types.h"
 
 struct Material {
 	VkPipeline pipeline;
@@ -51,7 +50,7 @@ struct DeletionQueue
 	}
 
 	void flush() {
-		for (int i = deletors.size() - 1; i >= 0; i--) {
+		for(s32 i = deletors.size() - 1; i >= 0; i--) {
 			deletors[i]();
 		}
 		deletors.clear();
@@ -62,7 +61,7 @@ class VulkanEngine {
 public:
 
 	bool isInitialized{ false };
-	int frameNumber {0};
+	u32 frameNumber {0};
 
 	VkExtent2D windowExtent{ 1700 , 900 };
 
@@ -110,7 +109,6 @@ public:
 	AllocatedImage depthImage;
 	VkFormat depthFormat;
 
-
 	//default array of renderable objects
 	std::vector<RenderObject> renderables;
 
@@ -131,8 +129,6 @@ private:
 	void initPipelines();
 	void initScene();
 
-	void createPipeline(const char* vertexShader, const char* fragmentShader);
-
 	void loadMeshes();
 	void uploadMesh(Mesh& mesh);
 
@@ -143,7 +139,7 @@ private:
 	//returns nullptr if it can't be found
 	Mesh* getMesh(const std::string& name);
 
-	void drawObjects(VkCommandBuffer cmd, RenderObject* first, int count);
+	void drawObjects(VkCommandBuffer cmd, RenderObject* first, u32 count);
 
 	void loadShaderModule(std::string filePath, VkShaderModule* outShaderModule);
 };
