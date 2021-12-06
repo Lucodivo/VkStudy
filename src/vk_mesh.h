@@ -25,5 +25,5 @@ struct Mesh {
 
     AllocatedBuffer vertexBuffer;
 
-    bool loadFromObj(const char* filename);
+    bool loadFromObj(const char* filename, const char* directory);
 };

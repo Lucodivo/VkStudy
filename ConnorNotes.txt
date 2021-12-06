@@ -1,2 +1,0 @@
-When you open as a CMake project with Visual Studio, you must right-click the CMakeLists.txt in the root directory and
-select "CMake Settings for vulkan_guide" and then you must set the "SDL2_dir" to the corresponing directory of SDL2. The root directory, not the include/libs directory inside the SDL2 folder.

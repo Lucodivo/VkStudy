@@ -8,7 +8,7 @@ VertexInputDescription Vertex::getVertexDescriptions()
 
 	// 1 vertex buffer binding, with a per-vertex rate
 	VkVertexInputBindingDescription mainBinding = {};
-	mainBinding.binding = 0;
+	mainBinding.binding = 0; // this binding number connects the attributes to their binding description
 	mainBinding.stride = sizeof(Vertex);
 	mainBinding.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
 
@@ -40,26 +40,30 @@ VertexInputDescription Vertex::getVertexDescriptions()
 	return description;
 }
 
-bool Mesh::loadFromObj(const char* filename)
+bool Mesh::loadFromObj(const char* file, const char* materialDir)
 {
+	tinyobj::ObjReaderConfig readerConfig;
+	readerConfig.mtl_search_path = materialDir;
+
+	tinyobj::ObjReader reader;
+	if (!reader.ParseFromFile(file, readerConfig)) {
+		if (!reader.Error().empty()) {
+			std::cerr << "TinyObjReader: " << reader.Error();
+		}
+		exit(1);
+	}
+
+	if (!reader.Warning().empty()) {
+		std::cout << "WARN (tinyobjloader): " << reader.Warning();
+	}
+
+
 	//attrib will contain the vertex arrays of the file
-	tinyobj::attrib_t attrib;
+	tinyobj::attrib_t attrib = reader.GetAttrib();
 	//shapes contains the info for each separate object in the file
-	std::vector<tinyobj::shape_t> shapes;
+	std::vector<tinyobj::shape_t> shapes = reader.GetShapes();
 	//materials contains the information about the material of each shape, but we won't use it.
-	std::vector<tinyobj::material_t> materials;
-
-	std::string warn;
-	std::string err;
-	tinyobj::LoadObj(&attrib, &shapes, &materials, &warn, &err, filename, nullptr);
-
-	if (!warn.empty()) {
-		std::cout << "WARN: " << warn << std::endl;
-	}
-	if (!err.empty()) {
-		std::cerr << err << std::endl;
-		return false;
-	}
+	std::vector<tinyobj::material_t> materials = reader.GetMaterials();
 
 	for (size_t s = 0; s < shapes.size(); s++) {
 		// Loop over faces(polygon)

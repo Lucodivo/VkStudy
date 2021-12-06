@@ -50,7 +50,7 @@ void VulkanEngine::init()
 	initDefaultRenderpass();
 	initFramebuffers();
 	initSyncStructures();
-	initPipeline();
+	initPipelines();
 	loadMeshes();
 	initScene();
 
@@ -78,26 +78,22 @@ void VulkanEngine::draw()
 	VK_CHECK(vkResetFences(device, 1, &renderFence));
 
 	// present semaphore is signaled when the presentation engine has finished using the image and
-	// it may now be used to draw to
+	// it may now be used as a target for drawing
 	uint32_t swapchainImageIndex;
 	VK_CHECK(vkAcquireNextImageKHR(device, swapchain, DEFAULT_NANOSEC_TIMEOUT, presentSemaphore, nullptr, &swapchainImageIndex));
 
 	VK_CHECK(vkResetCommandBuffer(mainCommandBuffer, 0));
 	VkCommandBuffer cmd = mainCommandBuffer;
 
-	VkCommandBufferBeginInfo cmdBeginInfo = {};
-	cmdBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-	cmdBeginInfo.pNext = nullptr;
-	cmdBeginInfo.pInheritanceInfo = nullptr;
-	cmdBeginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+	VkCommandBufferBeginInfo cmdBeginInfo = vkinit::commandBufferBeginInfo(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
 
 	VK_CHECK(vkBeginCommandBuffer(cmd, &cmdBeginInfo));
 	{
-		VkClearValue colorClearValue;
+		VkClearValue colorClearValue{};
 		float flash = abs(sin(frameNumber / 120.f));
 		colorClearValue.color = { { 0.0f, 0.0f, flash, 1.0f } };
 
-		VkClearValue depthClearValue;
+		VkClearValue depthClearValue{};
 		depthClearValue.depthStencil.depth = 1.f;
 
 		VkClearValue clearValues[] = { colorClearValue, depthClearValue };
@@ -106,7 +102,7 @@ void VulkanEngine::draw()
 		rpInfo.clearValueCount = 2;
 		rpInfo.pClearValues = clearValues;
 
-		// binds the framebuffers, clears the image and puts the image in the layout specified in the renderpass
+		// binds the framebuffers, clears the color & depth images and puts the image in the layout specified in the renderpass
 		vkCmdBeginRenderPass(cmd, &rpInfo, VK_SUBPASS_CONTENTS_INLINE);
 
 		drawObjects(cmd, renderables.data(), renderables.size());
@@ -116,8 +112,6 @@ void VulkanEngine::draw()
 	}
 	VK_CHECK(vkEndCommandBuffer(cmd));
 
-	//we want to wait on the presentSemaphore, as that semaphore is signaled when the swapchain is ready
-	//we will signal the renderSemaphore, to signal that rendering has finished
 	VkSubmitInfo submitInfo = {};
 	submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
 	submitInfo.pNext = nullptr;
@@ -125,8 +119,10 @@ void VulkanEngine::draw()
 	VkPipelineStageFlags waitStage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
 
 	submitInfo.pWaitDstStageMask = &waitStage;
+	//we want to wait on the presentSemaphore, as that semaphore is signaled when the swapchain is ready
 	submitInfo.waitSemaphoreCount = 1;
 	submitInfo.pWaitSemaphores = &presentSemaphore;
+	//we will signal the renderSemaphore, to signal that rendering has finished
 	submitInfo.signalSemaphoreCount = 1;
 	submitInfo.pSignalSemaphores = &renderSemaphore;
 	submitInfo.commandBufferCount = 1;
@@ -146,7 +142,6 @@ void VulkanEngine::draw()
 
 	VK_CHECK(vkQueuePresentKHR(graphicsQueue, &presentInfo));
 
-	//increase the number of frames drawn
 	frameNumber++;
 }
 
@@ -167,7 +162,9 @@ void VulkanEngine::run()
 				case SDLK_ESCAPE: bQuit = true; break;
 				case SDLK_SPACE: break;
 				case SDLK_a:
-				case SDLK_LEFT:  std::cout << "left" << std::endl; break;
+				case SDLK_LEFT:  
+					cameraPos.x -= 0.01f;
+					break;
 				case SDLK_d:
 				case SDLK_RIGHT: std::cout << "right" << std::endl; break;
 				case SDLK_w:
@@ -203,10 +200,15 @@ void VulkanEngine::initVulkan()
 
 	SDL_Vulkan_CreateSurface(window, instance, &surface);
 
+	VkPhysicalDeviceFeatures physicalDeviceFeatures{};
+	physicalDeviceFeatures.fillModeNonSolid = VK_TRUE;
+
 	vkb::PhysicalDeviceSelector selector{ vkbInst };
 	vkb::PhysicalDevice physicalDevice = selector
 		.set_minimum_version(1, 1)
 		.set_surface(surface)
+		.require_present()
+		.set_required_features(physicalDeviceFeatures)
 		.select()
 		.value();
 
@@ -246,34 +248,33 @@ void VulkanEngine::initSwapchain()
 	swapchainImageViews = vkbSwapchain.get_image_views().value();
 	swapchainImageFormat = vkbSwapchain.image_format;
 
+	// setup depth buffer
 	VkExtent3D depthImageExtent = {
 				windowExtent.width,
 				windowExtent.height,
 				1
 	};
-
-	//hardcoding the depth format to 32 bit float
 	depthFormat = VK_FORMAT_D32_SFLOAT;
+	VkImageCreateInfo depthImageInfo = vkinit::imageCreateInfo(depthFormat, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, depthImageExtent);
 
-	//the depth image will be an image with the format we selected and Depth Attachment usage flag
-	VkImageCreateInfo dimg_info = vkinit::imageCreateInfo(depthFormat, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, depthImageExtent);
+	// We want GPU local memory as we do not currently need to access the depth buffer on the CPU side
+	VmaAllocationCreateInfo depthImageAllocInfo = {};
+	depthImageAllocInfo.usage = VMA_MEMORY_USAGE_GPU_ONLY; // Requst it to be on GPU
+	depthImageAllocInfo.requiredFlags = VkMemoryPropertyFlags(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT); // Require it to be on GPU
+	vmaCreateImage(allocator, &depthImageInfo, &depthImageAllocInfo, &depthImage.image, &depthImage.allocation, nullptr);
 
-	//for the depth image, we want to allocate it from GPU local memory
-	VmaAllocationCreateInfo dimg_allocinfo = {};
-	dimg_allocinfo.usage = VMA_MEMORY_USAGE_GPU_ONLY;
-	dimg_allocinfo.requiredFlags = VkMemoryPropertyFlags(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+	// build an image-view for the depth image to use in framebuffers for rendering
+	VkImageViewCreateInfo depthImageViewInfo = vkinit::imageViewCreateInfo(depthFormat, depthImage.image, VK_IMAGE_ASPECT_DEPTH_BIT);
 
-	//allocate and create the image
-	vmaCreateImage(allocator, &dimg_info, &dimg_allocinfo, &depthImage.image, &depthImage.allocation, nullptr);
-
-	//build an image-view for the depth image to use for rendering
-	VkImageViewCreateInfo dview_info = vkinit::imageViewCreateInfo(depthFormat, depthImage.image, VK_IMAGE_ASPECT_DEPTH_BIT);
-
-	VK_CHECK(vkCreateImageView(device, &dview_info, nullptr, &depthImageView));
+	VK_CHECK(vkCreateImageView(device, &depthImageViewInfo, nullptr, &depthImageView));
 
 	mainDeletionQueue.pushFunction([=]() {
 		vkDestroyImageView(device, depthImageView, nullptr);
 		vmaDestroyImage(allocator, depthImage.image, depthImage.allocation);
+		int swapchainImageCount = swapchainImageViews.size();
+		for (int i = 0; i < swapchainImageCount; i++) {
+			vkDestroyImageView(device, swapchainImageViews[i], nullptr);
+		}
 		vkDestroySwapchainKHR(device, swapchain, nullptr);
 	});
 }
@@ -281,7 +282,6 @@ void VulkanEngine::initSwapchain()
 void VulkanEngine::initCommands()
 {
 	VkCommandPoolCreateInfo commandPoolInfo = vkinit::commandPoolCreateInfo(graphicsQueueFamily, VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT);
-
 	VK_CHECK(vkCreateCommandPool(device, &commandPoolInfo, nullptr, &commandPool));
 
 	VkCommandBufferAllocateInfo cmdAllocInfo = vkinit::commandBufferAllocateInfo(commandPool, 1, VK_COMMAND_BUFFER_LEVEL_PRIMARY);
@@ -304,10 +304,10 @@ void VulkanEngine::initDefaultRenderpass()
 	colorAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 	colorAttachment.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
 
-	// Multiple subpasses can use the same attachment,
-	// thus refs are defined in a subpass instead of the attachment itself
+	// Renderpasses hold VkAttachmentDescriptions but subpasses hold VkAttachmentReferences to those descriptions,
+	// this allows two subpasses to simply reference the same attachment instead of holding the entire description
 	VkAttachmentReference colorAttachmentRef = {};
-	//attachment number will index into the pAttachments array in the parent renderpass itself
+	//attachment number will index into the pAttachments array in the parent renderpass
 	colorAttachmentRef.attachment = 0;
 	colorAttachmentRef.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 
@@ -342,7 +342,6 @@ void VulkanEngine::initDefaultRenderpass()
 	renderPassInfo.subpassCount = 1;
 	renderPassInfo.pSubpasses = &subpass;
 
-
 	VK_CHECK(vkCreateRenderPass(device, &renderPassInfo, nullptr, &renderPass));
 
 	mainDeletionQueue.pushFunction([=]() {
@@ -362,16 +361,15 @@ void VulkanEngine::initFramebuffers()
 	fbInfo.height = windowExtent.height;
 	fbInfo.layers = 1;
 
-	const uint32_t swapchain_imagecount = swapchainImages.size();
-	framebuffers = std::vector<VkFramebuffer>(swapchain_imagecount);
-	for (int i = 0; i < swapchain_imagecount; i++) {
+	const uint32_t swapchainImageCount = swapchainImages.size();
+	framebuffers = std::vector<VkFramebuffer>(swapchainImageCount);
+	for (int i = 0; i < swapchainImageCount; i++) {
 		VkImageView attachments[] = { swapchainImageViews[i], depthImageView };
 		fbInfo.pAttachments = attachments;
 		VK_CHECK(vkCreateFramebuffer(device, &fbInfo, nullptr, &framebuffers[i]));
 
 		mainDeletionQueue.pushFunction([=]() {
 			vkDestroyFramebuffer(device, framebuffers[i], nullptr);
-			vkDestroyImageView(device, swapchainImageViews[i], nullptr);
 		});
 	}
 }
@@ -382,61 +380,54 @@ void VulkanEngine::initSyncStructures()
 	fenceCreateInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
 	fenceCreateInfo.pNext = nullptr;
 	fenceCreateInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
-
 	VK_CHECK(vkCreateFence(device, &fenceCreateInfo, nullptr, &renderFence));
 
 	VkSemaphoreCreateInfo semaphoreCreateInfo = {};
 	semaphoreCreateInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
 	semaphoreCreateInfo.pNext = nullptr;
 	semaphoreCreateInfo.flags = 0;
-
 	VK_CHECK(vkCreateSemaphore(device, &semaphoreCreateInfo, nullptr, &presentSemaphore));
 	VK_CHECK(vkCreateSemaphore(device, &semaphoreCreateInfo, nullptr, &renderSemaphore));
 
-
 	mainDeletionQueue.pushFunction([=]() {
+		vkDestroyFence(device, renderFence, nullptr);
 		vkDestroySemaphore(device, renderSemaphore, nullptr);
 		vkDestroySemaphore(device, presentSemaphore, nullptr);
-		vkDestroyFence(device, renderFence, nullptr);
 	});
 }
 
-void VulkanEngine::initPipeline()
-{
-	VkShaderModule meshVertShader;
-	if (!loadShaderModule("../shaders/mesh_triangle.vert.spv", &meshVertShader))
-	{
-		std::cout << "Error when building the triangle vertex shader module" << std::endl;
-	}
-	else {
-		std::cout << "Mesh triangle vertex shader successfully loaded" << std::endl;
-	}
+void VulkanEngine::initPipelines() {
+	MaterialInfo matInfos[] = {
+		materialNormalAsRGB,
+		materialRedOutline
+	};
 
-	VkShaderModule inColorFragShader;
-	if (!loadShaderModule("../shaders/colored_triangle.frag.spv", &inColorFragShader))
-	{
-		std::cout << "Error when building the triangle vertex shader module" << std::endl;
+	for (int i = 0; i < ArrayCount(matInfos); i++) {
+		createPipeline(matInfos[i]);
 	}
-	else {
-		std::cout << "Triangle vertex shader successfully loaded" << std::endl;
-	}
+}
 
+void VulkanEngine::createPipeline(MaterialInfo matInfo) {
+	// TODO: vertex shader modules can be cached in case of reuse in multiple pipelines?
+	VkShaderModule vertShader;
+	loadShaderModule(matInfo.vertFileName, &vertShader);
+
+	VkShaderModule fragShader;
+	loadShaderModule(matInfo.fragFileName, &fragShader);
+
+	// TODO: Pipeline layout can be reused for several pipelines/materials
+	// TODO: Reuse of pipeline layouts will allows for push constants to be used for several pipelines
 	// build mesh pipeline layout
-	VkPipelineLayoutCreateInfo meshPipelineLayoutInfo = vkinit::pipelineLayoutCreateInfo();
-	VkPushConstantRange pushConstant;
-	pushConstant.offset = 0;
-	pushConstant.size = sizeof(MeshPushConstants);
-	pushConstant.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
-	meshPipelineLayoutInfo.pPushConstantRanges = &pushConstant;
-	meshPipelineLayoutInfo.pushConstantRangeCount = 1;
+	VkPipelineLayoutCreateInfo pipelineLayoutInfo = vkinit::pipelineLayoutCreateInfo();
+	pipelineLayoutInfo.pPushConstantRanges = &matInfo.pushConstantRange;
+	pipelineLayoutInfo.pushConstantRangeCount = 1;
 
-	VK_CHECK(vkCreatePipelineLayout(device, &meshPipelineLayoutInfo, nullptr, &meshPipelineLayout));
+	VkPipelineLayout pipelineLayout;
+	VK_CHECK(vkCreatePipelineLayout(device, &pipelineLayoutInfo, nullptr, &pipelineLayout));
 
 	PipelineBuilder pipelineBuilder;
-	pipelineBuilder.shaderStages.push_back(
-		vkinit::pipelineShaderStageCreateInfo(VK_SHADER_STAGE_VERTEX_BIT, meshVertShader));
-	pipelineBuilder.shaderStages.push_back(
-		vkinit::pipelineShaderStageCreateInfo(VK_SHADER_STAGE_FRAGMENT_BIT, inColorFragShader));
+	pipelineBuilder.shaderStages.push_back(vkinit::pipelineShaderStageCreateInfo(VK_SHADER_STAGE_VERTEX_BIT, vertShader));
+	pipelineBuilder.shaderStages.push_back(vkinit::pipelineShaderStageCreateInfo(VK_SHADER_STAGE_FRAGMENT_BIT, fragShader));
 	pipelineBuilder.vertexInputInfo = vkinit::vertexInputStateCreateInfo();
 	// input assembly is the configuration for drawing triangle lists, strips, or points
 	pipelineBuilder.inputAssembly = vkinit::inputAssemblyCreateInfo(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
@@ -449,11 +440,11 @@ void VulkanEngine::initPipeline()
 	pipelineBuilder.viewport.maxDepth = 1.0f;
 	pipelineBuilder.scissor.offset = { 0, 0 };
 	pipelineBuilder.scissor.extent = windowExtent;
-	pipelineBuilder.rasterizer = vkinit::rasterizationStateCreateInfo(VK_POLYGON_MODE_FILL);
+	pipelineBuilder.rasterizer = vkinit::rasterizationStateCreateInfo(matInfo.polygonMode);
 	pipelineBuilder.multisampling = vkinit::multisamplingStateCreateInfo();
 	pipelineBuilder.colorBlendAttachment = vkinit::colorBlendAttachmentState();
 	pipelineBuilder.depthStencil = vkinit::depthStencilCreateInfo(true, true, VK_COMPARE_OP_LESS_OR_EQUAL);
-	pipelineBuilder.pipelineLayout = meshPipelineLayout;
+	pipelineBuilder.pipelineLayout = pipelineLayout;
 
 	//connect the pipeline builder vertex input info to the one we get from Vertex
 	VertexInputDescription vertexDescription = Vertex::getVertexDescriptions();
@@ -462,16 +453,16 @@ void VulkanEngine::initPipeline()
 	pipelineBuilder.vertexInputInfo.pVertexBindingDescriptions = vertexDescription.bindings.data();
 	pipelineBuilder.vertexInputInfo.vertexBindingDescriptionCount = vertexDescription.bindings.size();
 
-	meshPipeline = pipelineBuilder.buildPipeline(device, renderPass);
+	VkPipeline pipeline = pipelineBuilder.buildPipeline(device, renderPass);
 
-	createMaterial(meshPipeline, meshPipelineLayout, "defaultMesh");
+	createMaterial(pipeline, pipelineLayout, matInfo.name);
 
-	vkDestroyShaderModule(device, inColorFragShader, nullptr);
-	vkDestroyShaderModule(device, meshVertShader, nullptr);
+	vkDestroyShaderModule(device, fragShader, nullptr);
+	vkDestroyShaderModule(device, vertShader, nullptr);
 
 	mainDeletionQueue.pushFunction([=]() {
-		vkDestroyPipeline(device, meshPipeline, nullptr);
-		vkDestroyPipelineLayout(device, meshPipelineLayout, nullptr);
+		vkDestroyPipeline(device, pipeline, nullptr);
+		vkDestroyPipelineLayout(device, pipelineLayout, nullptr); // TODO: pipelineLayout is null as it is out of scope
 	});
 }
 
@@ -479,7 +470,7 @@ void VulkanEngine::initScene()
 {
 	RenderObject monkey;
 	monkey.mesh = getMesh("monkey");
-	monkey.material = getMaterial("defaultMesh");
+	monkey.material = getMaterial(materialNormalAsRGB.name);
 	monkey.transformMatrix = glm::mat4{ 1.0f };
 
 	renderables.push_back(monkey);
@@ -489,7 +480,7 @@ void VulkanEngine::initScene()
 
 			RenderObject tri;
 			tri.mesh = getMesh("triangle");
-			tri.material = getMaterial("defaultMesh");
+			tri.material = getMaterial(materialRedOutline.name);
 			glm::mat4 translation = glm::translate(glm::mat4{ 1.0 }, glm::vec3(x, 0, y));
 			glm::mat4 scale = glm::scale(glm::mat4{ 1.0 }, glm::vec3(0.2, 0.2, 0.2));
 			tri.transformMatrix = translation * scale;
@@ -501,6 +492,7 @@ void VulkanEngine::initScene()
 
 void VulkanEngine::loadMeshes()
 {
+	Mesh triangleMesh = {};
 	triangleMesh.vertices.resize(3);
 
 	triangleMesh.vertices[0].position = { 1.f, 1.f, 0.0f };
@@ -510,7 +502,8 @@ void VulkanEngine::loadMeshes()
 	triangleMesh.vertices[1].color = { 0.f, 1.f, 0.0f };
 	triangleMesh.vertices[2].color = { 0.f, 1.f, 0.0f };
 
-	monkeyMesh.loadFromObj("../assets/monkey_smooth.obj");
+	Mesh monkeyMesh = {};
+	monkeyMesh.loadFromObj("../assets/monkey_smooth.obj", "../assets/");
 
 	uploadMesh(triangleMesh);
 	uploadMesh(monkeyMesh);
@@ -580,10 +573,9 @@ Mesh* VulkanEngine::getMesh(const std::string& name)
 
 void VulkanEngine::drawObjects(VkCommandBuffer cmd, RenderObject* first, int count)
 {
-	glm::vec3 camPos = { 0.f,-6.f,-10.f };
-	glm::mat4 view = glm::translate(glm::mat4(1.f), camPos);
+	glm::mat4 view = glm::translate(glm::mat4(1.f), cameraPos);
 	glm::mat4 projection = glm::perspective(glm::radians(70.f), 1700.f / 900.f, 0.1f, 200.0f);
-	projection[1][1] *= -1;
+	projection[1][1] *= -1; // inverts y-axis
 
 	Mesh* lastMesh = nullptr;
 	Material* lastMaterial = nullptr;
@@ -600,10 +592,10 @@ void VulkanEngine::drawObjects(VkCommandBuffer cmd, RenderObject* first, int cou
 		glm::mat4 model = object.transformMatrix;
 		glm::mat4 meshMatrix = projection * view * model;
 
-		MeshPushConstants constants{};
-		constants.render_matrix = meshMatrix;
+		Mat4x4PushConstants constants{};
+		constants.renderMatrix = meshMatrix;
 
-		vkCmdPushConstants(cmd, object.material->pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(MeshPushConstants), &constants);
+		vkCmdPushConstants(cmd, object.material->pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(Mat4x4PushConstants), &constants);
 
 		//only bind the mesh if it's a different one from last bind
 		if (object.mesh != lastMesh) {
@@ -617,13 +609,14 @@ void VulkanEngine::drawObjects(VkCommandBuffer cmd, RenderObject* first, int cou
 	}
 }
 
-bool VulkanEngine::loadShaderModule(const char* filePath, VkShaderModule* outShaderModule)
+void VulkanEngine::loadShaderModule(std::string filePath, VkShaderModule* outShaderModule)
 {
 	//open the file. With cursor at the end
-	std::ifstream file(filePath, std::ios::ate | std::ios::binary);
+	filePath = SHADER_DIR + filePath + ".spv";
+	std::ifstream file(filePath.c_str(), std::ios::ate | std::ios::binary);
 
 	if (!file.is_open()) {
-		return false;
+		std::cout << "Could not open shader file: " << filePath << std::endl;
 	}
 
 	//find what the size of the file is by looking up the location of the cursor
@@ -631,6 +624,7 @@ bool VulkanEngine::loadShaderModule(const char* filePath, VkShaderModule* outSha
 
 	//spirv expects the buffer to be on uint32
 	std::vector<uint32_t> buffer(fileSize / sizeof(uint32_t));
+	//std::vector<uint32_t> buffer((fileSize + (sizeof(uint32_t) - 1)) / sizeof(uint32_t));
 
 	//put file cursor at beginning
 	file.seekg(0);
@@ -646,12 +640,11 @@ bool VulkanEngine::loadShaderModule(const char* filePath, VkShaderModule* outSha
 	//check that the creation goes well
 	VkShaderModule shaderModule;
 	if (vkCreateShaderModule(device, &createInfo, nullptr, &shaderModule) != VK_SUCCESS) {
-		return false;
+		std::cout << "Opened file but couldn't create shader: " << filePath << std::endl;
 	}
+
+	std::cout << "Successfully created shader: " << filePath << std::endl;
 	*outShaderModule = shaderModule;
-	return true;
-
-
 }
 
 VkPipeline PipelineBuilder::buildPipeline(VkDevice device, VkRenderPass pass) {
@@ -690,13 +683,10 @@ VkPipeline PipelineBuilder::buildPipeline(VkDevice device, VkRenderPass pass) {
 
 	//it's easy to error out on create graphics pipeline, so we handle it a bit better than the common VK_CHECK case
 	VkPipeline newPipeline;
-	if (vkCreateGraphicsPipelines(
-		device, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &newPipeline) != VK_SUCCESS) {
+	if (vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &newPipeline) != VK_SUCCESS) {
 		std::cout << "failed to create pipeline\n";
 		return VK_NULL_HANDLE; // failed to create graphics pipeline
 	}
-	else
-	{
-		return newPipeline;
-	}
+
+	return newPipeline;
 }

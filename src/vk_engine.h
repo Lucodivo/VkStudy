@@ -10,11 +10,9 @@
 
 #include <glm/glm.hpp>
 #include "vk_mesh.h"
+#include "materials.h"
 
-struct MeshPushConstants {
-	glm::vec4 data;
-	glm::mat4 render_matrix;
-};
+#define ArrayCount(Array) (sizeof(Array) / sizeof((Array)[0]))
 
 struct Material {
 	VkPipeline pipeline;
@@ -108,11 +106,6 @@ public:
 
 	VmaAllocator allocator;
 
-	VkPipelineLayout meshPipelineLayout;
-	VkPipeline meshPipeline;
-	Mesh triangleMesh;
-	Mesh monkeyMesh;
-
 	VkImageView depthImageView;
 	AllocatedImage depthImage;
 	VkFormat depthFormat;
@@ -124,6 +117,8 @@ public:
 	std::unordered_map<std::string, Material> materials;
 	std::unordered_map<std::string, Mesh> meshes;
 
+	glm::vec3 cameraPos = { 0.f,-6.f,-10.f };
+
 private:
 	
 	void initVulkan();
@@ -132,8 +127,11 @@ private:
 	void initDefaultRenderpass();
 	void initFramebuffers();
 	void initSyncStructures();
-	void initPipeline();
+	void createPipeline(MaterialInfo matInfo);
+	void initPipelines();
 	void initScene();
+
+	void createPipeline(const char* vertexShader, const char* fragmentShader);
 
 	void loadMeshes();
 	void uploadMesh(Mesh& mesh);
@@ -147,5 +145,5 @@ private:
 
 	void drawObjects(VkCommandBuffer cmd, RenderObject* first, int count);
 
-	bool loadShaderModule(const char* filePath, VkShaderModule* outShaderModule);
+	void loadShaderModule(std::string filePath, VkShaderModule* outShaderModule);
 };

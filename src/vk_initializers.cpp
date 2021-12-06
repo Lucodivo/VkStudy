@@ -177,3 +177,13 @@ VkRenderPassBeginInfo vkinit::renderPassBeginInfo(VkRenderPass renderPass, VkExt
 	info.framebuffer = framebuffer;
 	return info;
 }
+
+VkCommandBufferBeginInfo vkinit::commandBufferBeginInfo(VkCommandBufferUsageFlags usageFlags)
+{
+	VkCommandBufferBeginInfo cmdBeginInfo;
+	cmdBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+	cmdBeginInfo.pNext = nullptr;
+	cmdBeginInfo.pInheritanceInfo = nullptr;
+	cmdBeginInfo.flags = usageFlags;
+	return cmdBeginInfo;
+}
