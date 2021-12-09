@@ -131,8 +131,8 @@ bool Mesh::loadFromGltf(const char* file, bool glb) {
 			u16* indicesDataOffset = (u16*)(gltfModel.buffers[indicesGLTFBufferIndex].data.data() + indicesGLTFBufferByteOffset);
 
 			Assert(gltfModel.buffers.size() > positionAttribute.bufferIndex);
-			f32* positionAttributeData = (f32*)gltfModel.buffers[positionAttribute.bufferIndex].data.data() + positionAttribute.bufferByteOffset;
-			f32* normalAttributeData = (f32*)gltfModel.buffers[normalAttribute.bufferIndex].data.data() + normalAttribute.bufferByteOffset;
+			f32* positionAttributeData = (f32*)(gltfModel.buffers[positionAttribute.bufferIndex].data.data() + positionAttribute.bufferByteOffset);
+			f32* normalAttributeData = (f32*)(gltfModel.buffers[normalAttribute.bufferIndex].data.data() + normalAttribute.bufferByteOffset);
 			Assert(positionAttribute.bufferByteLength == normalAttribute.bufferByteLength);
 
 			Vertex vertex{};

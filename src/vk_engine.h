@@ -12,6 +12,7 @@
 #include "vk_mesh.h"
 #include "materials.h"
 #include "types.h"
+#include "camera.h"
 
 struct Material {
 	VkPipeline pipeline;
@@ -115,7 +116,10 @@ public:
 	std::unordered_map<std::string, Material> materials;
 	std::unordered_map<std::string, Mesh> meshes;
 
-	glm::vec3 cameraPos = { 0.f,-6.f,-10.f };
+	VkPipeline fragmentShaderPipeline;
+	VkPipelineLayout fragmentShaderPipelineLayout;
+
+	Camera camera;
 
 private:
 	
@@ -127,8 +131,10 @@ private:
 	void initSyncStructures();
 	void createPipeline(MaterialInfo matInfo);
 	void initPipelines();
+	void createFragmentShaderPipeline(const char* fragmentShader);
 	void initScene();
 
+	void initCamera();
 	void loadMeshes();
 	void uploadMesh(Mesh& mesh);
 
@@ -138,6 +144,8 @@ private:
 	Material* getMaterial(const std::string& name);
 	//returns nullptr if it can't be found
 	Mesh* getMesh(const std::string& name);
+
+	void drawFragmentShader(VkCommandBuffer cmd);
 
 	void drawObjects(VkCommandBuffer cmd, RenderObject* first, u32 count);
 

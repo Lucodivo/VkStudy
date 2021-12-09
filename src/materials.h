@@ -1,6 +1,7 @@
 #pragma once
 
 #include <vk_types.h>
+#include "types.h"
 
 #define SHADER_DIR "../shaders/"
 
@@ -10,6 +11,18 @@ struct MaterialInfo {
 	const char* fragFileName;
 	VkPushConstantRange pushConstantRange;
 	VkPolygonMode polygonMode;
+};
+
+struct FragmentShaderPushConstants {
+	f32 frameNumber;
+	f32 resolutionX;
+	f32 resolutionY;
+};
+
+const VkPushConstantRange fragmentShaderPushConstantsRange{
+	VK_SHADER_STAGE_FRAGMENT_BIT,
+	0,
+	sizeof(FragmentShaderPushConstants)
 };
 
 struct Mat4x4PushConstants {

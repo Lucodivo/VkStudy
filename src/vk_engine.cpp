@@ -44,6 +44,8 @@ void VulkanEngine::init()
 		window_flags
 	);
 
+	initCamera();
+
 	initVulkan();
 	initSwapchain();
 	initCommands();
@@ -56,6 +58,7 @@ void VulkanEngine::init()
 
 	isInitialized = true;
 }
+
 void VulkanEngine::cleanup()
 {	
 	VK_CHECK(vkWaitForFences(device, 1, &renderFence, true, DEFAULT_NANOSEC_TIMEOUT));
@@ -90,8 +93,7 @@ void VulkanEngine::draw()
 	VK_CHECK(vkBeginCommandBuffer(cmd, &cmdBeginInfo));
 	{
 		VkClearValue colorClearValue{};
-		float flash = abs(sin(frameNumber / 120.f));
-		colorClearValue.color = { { 0.0f, 0.0f, flash, 1.0f } };
+		colorClearValue.color = { { 0.1f, 0.1f, 0.1f, 1.0f } };
 
 		VkClearValue depthClearValue{};
 		depthClearValue.depthStencil.depth = 1.f;
@@ -105,6 +107,7 @@ void VulkanEngine::draw()
 		// binds the framebuffers, clears the color & depth images and puts the image in the layout specified in the renderpass
 		vkCmdBeginRenderPass(cmd, &rpInfo, VK_SUBPASS_CONTENTS_INLINE);
 
+		drawFragmentShader(cmd);
 		drawObjects(cmd, renderables.data(), renderables.size());
 
 		// finishes render and transitions image to layout specified in renderpass
@@ -163,14 +166,26 @@ void VulkanEngine::run()
 				case SDLK_SPACE: break;
 				case SDLK_a:
 				case SDLK_LEFT:  
-					cameraPos.x -= 0.01f;
+					camera.pos.x -= 0.1f;
 					break;
 				case SDLK_d:
-				case SDLK_RIGHT: std::cout << "right" << std::endl; break;
+				case SDLK_RIGHT:
+					camera.pos.x += 0.1f;
+					break;
 				case SDLK_w:
-				case SDLK_UP:    std::cout << "up" << std::endl; break;
+				case SDLK_UP:
+					camera.pos.z += 0.1f;
+					break;
 				case SDLK_s:
-				case SDLK_DOWN:  std::cout << "down" << std::endl; break;
+				case SDLK_DOWN:
+					camera.pos.z -= 0.1f;
+					break;
+				case SDLK_q:
+					camera.pos.y -= 0.1f;
+					break;
+				case SDLK_e:
+					camera.pos.y += 0.1f;
+					break;
 				}
 				break;
 			case SDL_KEYUP:
@@ -208,7 +223,7 @@ void VulkanEngine::initVulkan()
 		.set_minimum_version(1, 1)
 		.set_surface(surface)
 		.require_present()
-		.set_required_features(physicalDeviceFeatures)
+		.set_required_features(physicalDeviceFeatures) // TODO: probably won't need this long term
 		.select()
 		.value();
 
@@ -402,9 +417,54 @@ void VulkanEngine::initPipelines() {
 		materialRedOutline
 	};
 
+	createFragmentShaderPipeline("fragment_shader_test.frag");
+
 	for (u32 i = 0; i < ArrayCount(matInfos); i++) {
 		createPipeline(matInfos[i]);
 	}
+}
+
+void VulkanEngine::createFragmentShaderPipeline(const char* fragmentShader) {
+	VkShaderModule vertShader;
+	loadShaderModule("hard_coded_fullscreen_quad.vert", &vertShader);
+
+	VkShaderModule fragShader;
+	loadShaderModule(fragmentShader, &fragShader);
+
+	VkPipelineLayoutCreateInfo pipelineLayoutInfo = vkinit::pipelineLayoutCreateInfo();
+	pipelineLayoutInfo.pPushConstantRanges = &fragmentShaderPushConstantsRange;
+	pipelineLayoutInfo.pushConstantRangeCount = 1;
+
+	VK_CHECK(vkCreatePipelineLayout(device, &pipelineLayoutInfo, nullptr, &fragmentShaderPipelineLayout));
+
+	PipelineBuilder pipelineBuilder;
+	pipelineBuilder.shaderStages.push_back(vkinit::pipelineShaderStageCreateInfo(VK_SHADER_STAGE_VERTEX_BIT, vertShader));
+	pipelineBuilder.shaderStages.push_back(vkinit::pipelineShaderStageCreateInfo(VK_SHADER_STAGE_FRAGMENT_BIT, fragShader));
+	pipelineBuilder.vertexInputInfo = vkinit::vertexInputStateCreateInfo();
+	pipelineBuilder.inputAssembly = vkinit::inputAssemblyCreateInfo(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
+	pipelineBuilder.viewport.x = 0.0f;
+	pipelineBuilder.viewport.y = 0.0f;
+	pipelineBuilder.viewport.width = (float)windowExtent.width;
+	pipelineBuilder.viewport.height = (float)windowExtent.height;
+	pipelineBuilder.viewport.minDepth = 0.0f;
+	pipelineBuilder.viewport.maxDepth = 1.0f;
+	pipelineBuilder.scissor.offset = { 0, 0 };
+	pipelineBuilder.scissor.extent = windowExtent;
+	pipelineBuilder.rasterizer = vkinit::rasterizationStateCreateInfo(VK_POLYGON_MODE_FILL);
+	pipelineBuilder.multisampling = vkinit::multisamplingStateCreateInfo();
+	pipelineBuilder.colorBlendAttachment = vkinit::colorBlendAttachmentState();
+	pipelineBuilder.depthStencil = vkinit::depthStencilCreateInfo(true, true, VK_COMPARE_OP_LESS_OR_EQUAL);
+	pipelineBuilder.pipelineLayout = fragmentShaderPipelineLayout;
+
+	fragmentShaderPipeline = pipelineBuilder.buildPipeline(device, renderPass);
+
+	vkDestroyShaderModule(device, fragShader, nullptr);
+	vkDestroyShaderModule(device, vertShader, nullptr);
+
+	mainDeletionQueue.pushFunction([=]() {
+		vkDestroyPipeline(device, fragmentShaderPipeline, nullptr);
+		vkDestroyPipelineLayout(device, fragmentShaderPipelineLayout, nullptr);
+		});
 }
 
 void VulkanEngine::createPipeline(MaterialInfo matInfo) {
@@ -468,26 +528,42 @@ void VulkanEngine::createPipeline(MaterialInfo matInfo) {
 
 void VulkanEngine::initScene()
 {
-	RenderObject monkey;
-	monkey.mesh = getMesh("monkey");
-	monkey.material = getMaterial(materialNormalAsRGB.name);
-	monkey.transformMatrix = glm::mat4{ 1.0f };
+	RenderObject focusObject;
+	focusObject.mesh = getMesh("mrSaturn");
+	focusObject.material = getMaterial(materialNormalAsRGB.name);
+	glm::mat4 saturnTransform = glm::mat4{ 1.0f };
+	saturnTransform = glm::rotate(saturnTransform, 90.0f * RadiansPerDegree, glm::vec3(0.f, 0.f, 1.f));
+	saturnTransform = glm::rotate(saturnTransform, -90.0f * RadiansPerDegree, glm::vec3(0.f, 1.f, 0.f));
+	saturnTransform = glm::scale(saturnTransform, glm::vec3(4.f));
+	focusObject.transformMatrix = saturnTransform;
 
-	renderables.push_back(monkey);
+	renderables.push_back(focusObject);
 
 	for (s32 x = -20; x <= 20; x++) {
 		for (s32 y = -20; y <= 20; y++) {
 
-			RenderObject tri;
-			tri.mesh = getMesh("cube");
-			tri.material = getMaterial(materialRedOutline.name);
+			RenderObject environmentObject;
+			environmentObject.mesh = getMesh("cube");
+			environmentObject.material = getMaterial(materialRedOutline.name);
 			glm::mat4 translation = glm::translate(glm::mat4{ 1.0 }, glm::vec3(x, 0, y));
 			glm::mat4 scale = glm::scale(glm::mat4{ 1.0 }, glm::vec3(0.2, 0.2, 0.2));
-			tri.transformMatrix = translation * scale;
+			environmentObject.transformMatrix = translation * scale;
 
-			renderables.push_back(tri);
+			renderables.push_back(environmentObject);
 		}
 	}
+
+	// TODO: sort objects by material to minimize binding pipelines
+	//std::sort(renderables.begin(), renderables.end(), [](const RenderObject& a, const RenderObject& b) {
+	//	return a.material->pipeline > b.material->pipeline;
+	//});
+}
+
+void VulkanEngine::initCamera()
+{
+	camera = {};
+	camera.pos = { 0.f, 0.f, 10.f };
+	camera.setForward({0.f, 1.f, 0.f});
 }
 
 void VulkanEngine::loadMeshes()
@@ -507,13 +583,18 @@ void VulkanEngine::loadMeshes()
 	Mesh cubeMesh = {};
 	cubeMesh.loadFromGltf("../assets/cube.glb", true);
 
+	Mesh mrSaturnMesh = {};
+	mrSaturnMesh.loadFromGltf("../assets/mr_saturn.glb", true);
+
 	uploadMesh(triangleMesh);
 	uploadMesh(monkeyMesh);
 	uploadMesh(cubeMesh);
+	uploadMesh(mrSaturnMesh);
 
 	meshes["monkey"] = monkeyMesh;
 	meshes["triangle"] = triangleMesh;
 	meshes["cube"] = cubeMesh;
+	meshes["mrSaturn"] = mrSaturnMesh;
 }
 
 void VulkanEngine::uploadMesh(Mesh& mesh)
@@ -575,11 +656,22 @@ Mesh* VulkanEngine::getMesh(const std::string& name)
 	}
 }
 
+void VulkanEngine::drawFragmentShader(VkCommandBuffer cmd) {
+	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, fragmentShaderPipeline);
+	
+	FragmentShaderPushConstants pushConstants;
+	pushConstants.frameNumber = (f32)frameNumber;
+	pushConstants.resolutionX = (f32)windowExtent.width;
+	pushConstants.resolutionY = (f32)windowExtent.height;
+	vkCmdPushConstants(cmd, fragmentShaderPipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(FragmentShaderPushConstants), &pushConstants);
+
+	vkCmdDraw(cmd, 6, 1, 0, 0);
+}
+
 void VulkanEngine::drawObjects(VkCommandBuffer cmd, RenderObject* first, u32 count)
 {
-	glm::mat4 view = glm::translate(glm::mat4(1.f), cameraPos);
+	glm::mat4 view = glm::translate(glm::mat4(1.f), -camera.pos);
 	glm::mat4 projection = glm::perspective(glm::radians(70.f), 1700.f / 900.f, 0.1f, 200.0f);
-	projection[1][1] *= -1; // inverts y-axis
 
 	Mesh* lastMesh = nullptr;
 	Material* lastMaterial = nullptr;
