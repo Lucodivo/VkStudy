@@ -68,7 +68,7 @@ VkPipelineRasterizationStateCreateInfo vkinit::rasterizationStateCreateInfo(VkPo
 	info.polygonMode = polygonMode;
 	info.lineWidth = 1.0f;
 	info.cullMode = VK_CULL_MODE_NONE;
-	info.frontFace = VK_FRONT_FACE_CLOCKWISE;
+	info.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
 	info.depthBiasEnable = VK_FALSE;
 	info.depthBiasConstantFactor = 0.0f;
 	info.depthBiasClamp = 0.0f;

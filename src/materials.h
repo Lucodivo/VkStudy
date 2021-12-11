@@ -14,7 +14,7 @@ struct MaterialInfo {
 };
 
 struct FragmentShaderPushConstants {
-	f32 frameNumber;
+	f32 time;
 	f32 resolutionX;
 	f32 resolutionY;
 };

@@ -14,6 +14,10 @@
 #include "types.h"
 #include "camera.h"
 
+#include "imgui.h"
+#include "imgui_impl_sdl.h"
+#include "imgui_impl_vulkan.h"
+
 struct Material {
 	VkPipeline pipeline;
 	VkPipelineLayout pipelineLayout;
@@ -122,6 +126,14 @@ public:
 	Camera camera;
 
 private:
+
+	struct ImguiData {
+		VkPipelineCache PipelineCache;
+		VkDescriptorPool DescriptorPool;
+		ImGui_ImplVulkanH_Window window;
+	} imguiData;
+	
+	void initImgui();
 	
 	void initVulkan();
 	void initSwapchain();
@@ -148,6 +160,8 @@ private:
 	void drawFragmentShader(VkCommandBuffer cmd);
 
 	void drawObjects(VkCommandBuffer cmd, RenderObject* first, u32 count);
+
+	void drawImgui(VkCommandBuffer cmd);
 
 	void loadShaderModule(std::string filePath, VkShaderModule* outShaderModule);
 };

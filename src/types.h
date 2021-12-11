@@ -41,6 +41,7 @@ typedef size_t memory_index;
 
 #define Min(x, y) (x < y) ? x : y
 #define Max(x, y) (x > y) ? x : y
+#define Clamp(c, lo, hi) Max(lo, Min(hi, c))
 
 struct Extent2D
 {

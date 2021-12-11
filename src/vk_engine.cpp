@@ -18,6 +18,8 @@
 
 #define DEFAULT_NANOSEC_TIMEOUT 1'000'000'000
 
+#define PRESENT_MODE VK_PRESENT_MODE_FIFO_KHR
+
 #define VK_CHECK(x)                                                 \
 	do                                                              \
 	{                                                               \
@@ -29,12 +31,27 @@
 		}                                                           \
 	} while (0)
 
+static void imgui_check_vk_error(VkResult err)
+{
+	if (err == 0)
+		return;
+	fprintf(stderr, "[vulkan] Error: VkResult = %d\n", err);
+	if (err < 0)
+		abort();
+}
+
+const VkClearValue colorClearValue{
+	{ 0.1f, 0.1f, 0.1f, 1.0f }
+};
+
+const VkClearValue depthClearValue {
+	{ 1.f, 0.f }
+};
+
 void VulkanEngine::init()
 {
 	SDL_Init(SDL_INIT_VIDEO);
-
-	SDL_WindowFlags window_flags = (SDL_WindowFlags)(SDL_WINDOW_VULKAN);
-	
+	SDL_WindowFlags window_flags = (SDL_WindowFlags)(SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI);
 	window = SDL_CreateWindow(
 		"Vulkan Engine",
 		SDL_WINDOWPOS_UNDEFINED,
@@ -56,6 +73,8 @@ void VulkanEngine::init()
 	loadMeshes();
 	initScene();
 
+	initImgui();
+
 	isInitialized = true;
 }
 
@@ -65,6 +84,7 @@ void VulkanEngine::cleanup()
 
 	if (isInitialized) 
 	{
+		ImGui_ImplVulkan_Shutdown();
 		mainDeletionQueue.flush();
 		vmaDestroyAllocator(allocator);
 		vkDestroyDevice(device, nullptr);
@@ -92,26 +112,23 @@ void VulkanEngine::draw()
 
 	VK_CHECK(vkBeginCommandBuffer(cmd, &cmdBeginInfo));
 	{
-		VkClearValue colorClearValue{};
-		colorClearValue.color = { { 0.1f, 0.1f, 0.1f, 1.0f } };
-
-		VkClearValue depthClearValue{};
-		depthClearValue.depthStencil.depth = 1.f;
-
 		VkClearValue clearValues[] = { colorClearValue, depthClearValue };
 
 		VkRenderPassBeginInfo rpInfo = vkinit::renderPassBeginInfo(renderPass, windowExtent, framebuffers[swapchainImageIndex]);
 		rpInfo.clearValueCount = 2;
-		rpInfo.pClearValues = clearValues;
+		rpInfo.pClearValues = clearValues; // Clear values for each attachment
 
 		// binds the framebuffers, clears the color & depth images and puts the image in the layout specified in the renderpass
 		vkCmdBeginRenderPass(cmd, &rpInfo, VK_SUBPASS_CONTENTS_INLINE);
 
 		drawFragmentShader(cmd);
 		drawObjects(cmd, renderables.data(), renderables.size());
+		drawImgui(cmd);
 
 		// finishes render and transitions image to layout specified in renderpass
 		vkCmdEndRenderPass(cmd);
+
+		imguiData.window.FrameIndex = swapchainImageIndex;
 	}
 	VK_CHECK(vkEndCommandBuffer(cmd));
 
@@ -155,6 +172,10 @@ void VulkanEngine::run()
 
 	while (!bQuit)
 	{
+		glm::vec3 cameraDelta = {};
+		const f32 moveSpeed = 0.2f;
+		f32 yawDelta = 0.0f;
+		f32 pitchDelta = 0.0f;
 		while (SDL_PollEvent(&e) != 0)
 		{
 			switch (e.type) {
@@ -166,36 +187,141 @@ void VulkanEngine::run()
 				case SDLK_SPACE: break;
 				case SDLK_a:
 				case SDLK_LEFT:  
-					camera.pos.x -= 0.1f;
+					cameraDelta.x -= moveSpeed;
 					break;
 				case SDLK_d:
 				case SDLK_RIGHT:
-					camera.pos.x += 0.1f;
+					cameraDelta.x += moveSpeed;
 					break;
 				case SDLK_w:
 				case SDLK_UP:
-					camera.pos.z += 0.1f;
+					cameraDelta.y += moveSpeed;
 					break;
 				case SDLK_s:
 				case SDLK_DOWN:
-					camera.pos.z -= 0.1f;
+					cameraDelta.y -= moveSpeed;
 					break;
 				case SDLK_q:
-					camera.pos.y -= 0.1f;
+					cameraDelta.z -= moveSpeed;
 					break;
 				case SDLK_e:
-					camera.pos.y += 0.1f;
+					cameraDelta.z += moveSpeed;
 					break;
 				}
 				break;
+			case SDL_MOUSEMOTION:
+				{
+				yawDelta += 5.0f * ((f32)e.motion.xrel / windowExtent.width);
+				break;
+				}
 			case SDL_KEYUP:
 				break;
 			default: break;
 			}
 		}
 
+		camera.move(cameraDelta);
+		camera.turn(yawDelta);
 		draw();
 	}
+}
+
+void VulkanEngine::initImgui()
+{
+	IMGUI_CHECKVERSION();
+	ImGui::CreateContext();
+	ImGuiIO& io = ImGui::GetIO(); (void)io;
+	//io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;     // Enable Keyboard Controls
+	//io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;      // Enable Gamepad Controls
+
+	// Setup Dear ImGui style
+	ImGui::StyleColorsDark();
+	//ImGui::StyleColorsClassic();
+
+	ImGui_ImplVulkanH_Window imguiWindow{};
+	imguiWindow.Width = windowExtent.width;
+	imguiWindow.Height = windowExtent.height;
+	imguiWindow.Swapchain = swapchain;
+	imguiWindow.Surface = surface;
+	imguiWindow.SurfaceFormat.format = swapchainImageFormat;
+	imguiWindow.SurfaceFormat.colorSpace = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR;
+	imguiWindow.PresentMode = PRESENT_MODE;
+	imguiWindow.RenderPass = renderPass;
+	imguiWindow.ClearEnable = true;
+	imguiWindow.ClearValue = colorClearValue;
+	imguiWindow.FrameIndex = 0;
+	imguiWindow.ImageCount = swapchainImageViews.size();
+	imguiWindow.SemaphoreIndex = 0;
+	imguiWindow.Frames = nullptr;
+	imguiWindow.FrameSemaphores = nullptr;
+
+	// Create Descriptor Pool
+	{
+		VkResult err;
+		VkDescriptorPoolSize pool_sizes[] =
+		{
+				{ VK_DESCRIPTOR_TYPE_SAMPLER, 1000 },
+				{ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1000 },
+				{ VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 1000 },
+				{ VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1000 },
+				{ VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER, 1000 },
+				{ VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER, 1000 },
+				{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1000 },
+				{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1000 },
+				{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, 1000 },
+				{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC, 1000 },
+				{ VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, 1000 }
+		};
+		VkDescriptorPoolCreateInfo pool_info = {};
+		pool_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+		pool_info.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
+		pool_info.maxSets = 1000 * IM_ARRAYSIZE(pool_sizes);
+		pool_info.poolSizeCount = (uint32_t)IM_ARRAYSIZE(pool_sizes);
+		pool_info.pPoolSizes = pool_sizes;
+		VK_CHECK(vkCreateDescriptorPool(device, &pool_info, nullptr, &imguiData.DescriptorPool));
+	}
+
+	ImGui_ImplSDL2_InitForVulkan(window);
+	ImGui_ImplVulkan_InitInfo init_info = {};
+	init_info.Instance = instance;
+	init_info.PhysicalDevice = chosenGPU;
+	init_info.Device = device;
+	init_info.QueueFamily = graphicsQueueFamily;
+	init_info.Queue = graphicsQueue;
+	init_info.PipelineCache = VK_NULL_HANDLE;
+	init_info.DescriptorPool = imguiData.DescriptorPool;
+	init_info.MinImageCount = 2;
+	init_info.ImageCount = swapchainImageViews.size();
+	init_info.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
+	init_info.Allocator = nullptr;
+	init_info.CheckVkResultFn = imgui_check_vk_error;
+	ImGui_ImplVulkan_Init(&init_info, imguiWindow.RenderPass);
+
+	// Upload Fonts
+	{
+		// Use any command queue
+		VK_CHECK(vkResetCommandPool(device, commandPool, 0));
+		VkCommandBufferBeginInfo begin_info = {};
+		begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+		begin_info.flags |= VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+		VK_CHECK(vkBeginCommandBuffer(mainCommandBuffer, &begin_info));
+
+		ImGui_ImplVulkan_CreateFontsTexture(mainCommandBuffer);
+
+		VkSubmitInfo end_info = {};
+		end_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+		end_info.commandBufferCount = 1;
+		end_info.pCommandBuffers = &mainCommandBuffer;
+		VK_CHECK(vkEndCommandBuffer(mainCommandBuffer));
+		VK_CHECK(vkQueueSubmit(graphicsQueue, 1, &end_info, VK_NULL_HANDLE));
+
+		VK_CHECK(vkDeviceWaitIdle(device));
+		ImGui_ImplVulkan_DestroyFontUploadObjects();
+	}
+
+	mainDeletionQueue.pushFunction([=]() {
+		vkDestroyDescriptorPool(device, imguiData.DescriptorPool, nullptr);
+	});
 }
 
 void VulkanEngine::initVulkan()
@@ -207,6 +333,7 @@ void VulkanEngine::initVulkan()
 		.request_validation_layers(true)
 		.require_api_version(1, 1, 0)
 		.use_default_debug_messenger()
+		//.enable_extension("VK_KHR_Maintenance1") // needed for Vulkan versions <1.1 when using negative viewport valuesto perform y-inversion of the clip space
 		.build()
 		.value();
 
@@ -251,9 +378,13 @@ void VulkanEngine::initSwapchain()
 {
 	vkb::SwapchainBuilder swapchainBuilder{ chosenGPU, device, surface };
 
+	VkSurfaceFormatKHR desiredFormat{};
+	desiredFormat.colorSpace = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR;
+	desiredFormat.format = VK_FORMAT_B8G8R8A8_UNORM;// VK_FORMAT_B8G8R8A8_SRGB;
+
 	vkb::Swapchain vkbSwapchain = swapchainBuilder
-		.use_default_format_selection()
-		.set_desired_present_mode(VK_PRESENT_MODE_FIFO_KHR)
+		.set_desired_format(desiredFormat)
+		.set_desired_present_mode(PRESENT_MODE)
 		.set_desired_extent(windowExtent.width, windowExtent.height)
 		.build()
 		.value();
@@ -532,8 +663,8 @@ void VulkanEngine::initScene()
 	focusObject.mesh = getMesh("mrSaturn");
 	focusObject.material = getMaterial(materialNormalAsRGB.name);
 	glm::mat4 saturnTransform = glm::mat4{ 1.0f };
-	saturnTransform = glm::rotate(saturnTransform, 90.0f * RadiansPerDegree, glm::vec3(0.f, 0.f, 1.f));
-	saturnTransform = glm::rotate(saturnTransform, -90.0f * RadiansPerDegree, glm::vec3(0.f, 1.f, 0.f));
+	//saturnTransform = glm::rotate(saturnTransform, 90.0f * RadiansPerDegree, glm::vec3(0.f, 0.f, 1.f));
+	//saturnTransform = glm::rotate(saturnTransform, -90.0f * RadiansPerDegree, glm::vec3(0.f, 1.f, 0.f));
 	saturnTransform = glm::scale(saturnTransform, glm::vec3(4.f));
 	focusObject.transformMatrix = saturnTransform;
 
@@ -545,7 +676,7 @@ void VulkanEngine::initScene()
 			RenderObject environmentObject;
 			environmentObject.mesh = getMesh("cube");
 			environmentObject.material = getMaterial(materialRedOutline.name);
-			glm::mat4 translation = glm::translate(glm::mat4{ 1.0 }, glm::vec3(x, 0, y));
+			glm::mat4 translation = glm::translate(glm::mat4{ 1.0 }, glm::vec3(x, y, 0));
 			glm::mat4 scale = glm::scale(glm::mat4{ 1.0 }, glm::vec3(0.2, 0.2, 0.2));
 			environmentObject.transformMatrix = translation * scale;
 
@@ -562,8 +693,8 @@ void VulkanEngine::initScene()
 void VulkanEngine::initCamera()
 {
 	camera = {};
-	camera.pos = { 0.f, 0.f, 10.f };
-	camera.setForward({0.f, 1.f, 0.f});
+	camera.pos = { 15.f, 0.f, 6.f };
+	camera.setForward({-1.f, 0.f, 0.f});
 }
 
 void VulkanEngine::loadMeshes()
@@ -576,25 +707,24 @@ void VulkanEngine::loadMeshes()
 	triangleMesh.vertices[0].normal = { 0.f, 1.f, 0.0f };
 	triangleMesh.vertices[1].normal = { 0.f, 1.f, 0.0f };
 	triangleMesh.vertices[2].normal = { 0.f, 1.f, 0.0f };
+	uploadMesh(triangleMesh);
+	meshes["triangle"] = triangleMesh;
 
-	Mesh monkeyMesh = {};
-	monkeyMesh.loadFromObj("../assets/monkey_smooth.obj", "../assets/");
+	//Mesh monkeyMesh = {};
+	//monkeyMesh.loadFromObj("../assets/monkey_smooth.obj", "../assets/");
+	//uploadMesh(monkeyMesh);
+	//meshes["monkey"] = monkeyMesh;
 
 	Mesh cubeMesh = {};
 	cubeMesh.loadFromGltf("../assets/cube.glb", true);
+	uploadMesh(cubeMesh);
+	meshes["cube"] = cubeMesh;
 
 	Mesh mrSaturnMesh = {};
-	mrSaturnMesh.loadFromGltf("../assets/mr_saturn.glb", true);
-
-	uploadMesh(triangleMesh);
-	uploadMesh(monkeyMesh);
-	uploadMesh(cubeMesh);
+	mrSaturnMesh.loadFromGltf("../assets/mr_saturn_2.glb", true);
 	uploadMesh(mrSaturnMesh);
-
-	meshes["monkey"] = monkeyMesh;
-	meshes["triangle"] = triangleMesh;
-	meshes["cube"] = cubeMesh;
 	meshes["mrSaturn"] = mrSaturnMesh;
+
 }
 
 void VulkanEngine::uploadMesh(Mesh& mesh)
@@ -658,9 +788,19 @@ Mesh* VulkanEngine::getMesh(const std::string& name)
 
 void VulkanEngine::drawFragmentShader(VkCommandBuffer cmd) {
 	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, fragmentShaderPipeline);
+
+	VkViewport viewport{};
+	viewport.x = 0;
+	viewport.y = (f32)windowExtent.height;
+	viewport.width = (f32)windowExtent.width;
+	viewport.height = -viewport.y;
+	viewport.minDepth = 0.0f;
+	viewport.maxDepth = 1.0f;
+
+	vkCmdSetViewport(cmd, 0, 1, &viewport);
 	
 	FragmentShaderPushConstants pushConstants;
-	pushConstants.frameNumber = (f32)frameNumber;
+	pushConstants.time = (frameNumber / 60.0f);
 	pushConstants.resolutionX = (f32)windowExtent.width;
 	pushConstants.resolutionY = (f32)windowExtent.height;
 	vkCmdPushConstants(cmd, fragmentShaderPipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(FragmentShaderPushConstants), &pushConstants);
@@ -670,8 +810,9 @@ void VulkanEngine::drawFragmentShader(VkCommandBuffer cmd) {
 
 void VulkanEngine::drawObjects(VkCommandBuffer cmd, RenderObject* first, u32 count)
 {
-	glm::mat4 view = glm::translate(glm::mat4(1.f), -camera.pos);
+	glm::mat4 view = camera.getViewMatrix();
 	glm::mat4 projection = glm::perspective(glm::radians(70.f), 1700.f / 900.f, 0.1f, 200.0f);
+	//projection[1][1] *= -1.0f;
 
 	Mesh* lastMesh = nullptr;
 	Material* lastMaterial = nullptr;
@@ -684,6 +825,16 @@ void VulkanEngine::drawObjects(VkCommandBuffer cmd, RenderObject* first, u32 cou
 			vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, object.material->pipeline);
 			lastMaterial = object.material;
 		}
+
+		VkViewport viewport{};
+		viewport.x = 0;
+		viewport.y = (f32)windowExtent.height;
+		viewport.width = (f32)windowExtent.width;
+		viewport.height = -viewport.y;
+		viewport.minDepth = 0.0f;
+		viewport.maxDepth = 1.0f;
+
+		vkCmdSetViewport(cmd, 0, 1, &viewport);
 
 		glm::mat4 model = object.transformMatrix;
 		glm::mat4 meshMatrix = projection * view * model;
@@ -703,6 +854,45 @@ void VulkanEngine::drawObjects(VkCommandBuffer cmd, RenderObject* first, u32 cou
 
 		vkCmdDraw(cmd, object.mesh->vertices.size(), 1, 0, 0);
 	}
+}
+
+void VulkanEngine::drawImgui(VkCommandBuffer cmd)
+{
+	// Start the Dear ImGui frame
+	ImGui_ImplVulkan_NewFrame();
+	ImGui_ImplSDL2_NewFrame(window);
+	ImGui::NewFrame();
+	{
+		static float f = 0.0f;
+		static int counter = 0;
+
+		ImGui::Begin("Hello, world!");                          // Create a window called "Hello, world!" and append into it.
+
+		ImGui::Text("This is some useful text.");               // Display some text (you can use a format strings too)
+
+		ImGui::SliderFloat("float", &f, 0.0f, 1.0f);            // Edit 1 float using a slider from 0.0f to 1.0f
+
+		if (ImGui::Button("Button"))                            // Buttons return true when clicked (most widgets return true when edited/activated)
+			counter++;
+		ImGui::SameLine();
+		ImGui::Text("counter = %d", counter);
+
+		ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
+		ImGui::End();
+	}
+
+	{
+		ImGui::Begin("Another Window");   // Pass a pointer to our bool variable (the window will have a closing button that will clear the bool when clicked)
+		ImGui::Text("Hello from another window!");
+		ImGui::End();
+	}
+
+	// Rendering
+	ImGui::Render();
+	ImDrawData* draw_data = ImGui::GetDrawData();
+
+	// Record dear imgui primitives into command buffer
+	ImGui_ImplVulkan_RenderDrawData(draw_data, cmd);
 }
 
 void VulkanEngine::loadShaderModule(std::string filePath, VkShaderModule* outShaderModule)
@@ -759,6 +949,14 @@ VkPipeline PipelineBuilder::buildPipeline(VkDevice device, VkRenderPass pass) {
 	colorBlending.attachmentCount = 1;
 	colorBlending.pAttachments = &colorBlendAttachment;
 
+	VkPipelineDynamicStateCreateInfo dynamicStateCreateInfo = {};
+	VkDynamicState negativeViewPortDynamicState = VK_DYNAMIC_STATE_VIEWPORT;
+	dynamicStateCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
+	dynamicStateCreateInfo.pNext = nullptr;
+	dynamicStateCreateInfo.pDynamicStates = &negativeViewPortDynamicState;
+	dynamicStateCreateInfo.dynamicStateCount = 1;
+	dynamicStateCreateInfo.flags = 0;
+
 	VkGraphicsPipelineCreateInfo pipelineInfo = {};
 	pipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
 	pipelineInfo.pNext = nullptr;
@@ -775,6 +973,7 @@ VkPipeline PipelineBuilder::buildPipeline(VkDevice device, VkRenderPass pass) {
 	pipelineInfo.renderPass = pass;
 	pipelineInfo.subpass = 0;
 	pipelineInfo.basePipelineHandle = VK_NULL_HANDLE;
+	pipelineInfo.pDynamicState = &dynamicStateCreateInfo;
 
 	//it's easy to error out on create graphics pipeline, so we handle it a bit better than the common VK_CHECK case
 	VkPipeline newPipeline;
