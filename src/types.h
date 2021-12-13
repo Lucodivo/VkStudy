@@ -39,8 +39,8 @@ typedef size_t memory_index;
 
 #define InvalidCodePath Assert(!"InvalidCodePath");
 
-#define Min(x, y) (x < y) ? x : y
-#define Max(x, y) (x > y) ? x : y
+#define Min(x, y) ((x < y) ? x : y)
+#define Max(x, y) ((x > y) ? x : y)
 #define Clamp(c, lo, hi) Max(lo, Min(hi, c))
 
 #define VK_CHECK(x)                                                 \

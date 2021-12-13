@@ -30,16 +30,8 @@ const VkClearValue depthClearValue {
 
 void VulkanEngine::init()
 {
-	SDL_Init(SDL_INIT_VIDEO);
-	SDL_WindowFlags window_flags = (SDL_WindowFlags)(SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI);
-	window = SDL_CreateWindow(
-		"Vulkan Engine",
-		SDL_WINDOWPOS_UNDEFINED,
-		SDL_WINDOWPOS_UNDEFINED,
-		windowExtent.width,
-		windowExtent.height,
-		window_flags
-	);
+
+	initSDL();
 
 	initCamera();
 
@@ -182,6 +174,10 @@ void VulkanEngine::processInput() {
 		case SDL_KEYUP:
 			switch (e.key.keysym.sym)
 			{
+			case SDLK_SPACE:
+				editMode = !editMode;
+				SDL_SetRelativeMouseMode(editMode ? SDL_FALSE : SDL_TRUE);
+				break;
 			case SDLK_a:
 			case SDLK_LEFT:
 				input.left = false;
@@ -208,7 +204,8 @@ void VulkanEngine::processInput() {
 			break;
 		case SDL_MOUSEMOTION:
 		{
-			f32 yawDelta = 5.0f * ((f32)e.motion.xrel / windowExtent.width);
+			input.deltaX += (f32)e.motion.xrel / windowExtent.width;
+			input.deltaY += (f32)e.motion.yrel / windowExtent.height;
 			break;
 		}
 		default: break;
@@ -222,9 +219,12 @@ void VulkanEngine::processInput() {
 void VulkanEngine::updateWorld() {
 	local_access bool imguiOpen = true;
 	local_access f32 moveSpeed = 0.2f;
+	local_access f32 turnSpeed = 0.2f;
 	glm::vec3 cameraDelta = {};
 	f32 yawDelta = 0.0f;
 	f32 pitchDelta = 0.0f;
+
+	// Used to keep camera at constant speed regardless of direction
 	const f32 invSqrt[4] = {
 		0.0f,
 		1.0f,
@@ -263,13 +263,25 @@ void VulkanEngine::updateWorld() {
 		}
 	}
 
+	if (!editMode && (input.deltaX != 0.0f || input.deltaY != 0.0f)) {
+		f32 turnSpd = turnSpeed * 20.0;
+		camera.turn(input.deltaX * turnSpd, input.deltaY * turnSpd);
+	}
+	
+	// reset some input variables
+	{
+		input.deltaX = 0.0f;
+		input.deltaY = 0.0f;
+	}
+
 	ImGui::Begin("Variable Adjustments", &imguiOpen, 0);
 	{
 		ImGui::SliderFloat("move speed", &moveSpeed, 0.1f, 1.0f, "%.2f");
+		ImGui::SliderFloat("turn speed", &turnSpeed, 0.1f, 1.0f, "%.2f");
 	}
 	ImGui::End();
 
-	camera.move(cameraDelta * invSqrt[invSqrtIndex] * moveSpeed);
+	camera.move(cameraDelta * (invSqrt[invSqrtIndex] * moveSpeed));
 }
 
 void VulkanEngine::run()
@@ -284,6 +296,22 @@ void VulkanEngine::run()
 		updateWorld();
 		draw();
 	}
+}
+
+void VulkanEngine::initSDL()
+{
+	SDL_Init(SDL_INIT_VIDEO);
+	SDL_WindowFlags window_flags = (SDL_WindowFlags)(SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI);
+	window = SDL_CreateWindow(
+		"Vulkan Engine",
+		SDL_WINDOWPOS_UNDEFINED,
+		SDL_WINDOWPOS_UNDEFINED,
+		windowExtent.width,
+		windowExtent.height,
+		window_flags
+	);
+	SDL_CaptureMouse(SDL_TRUE);
+	SDL_SetHintWithPriority(SDL_HINT_MOUSE_RELATIVE_MODE_WARP, "1", SDL_HINT_OVERRIDE);
 }
 
 void VulkanEngine::initImgui()

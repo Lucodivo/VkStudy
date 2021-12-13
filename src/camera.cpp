@@ -16,13 +16,28 @@ void Camera::move(glm::vec3 unitsVec) {
 }
 
 // yawDelta is degrees
-void Camera::turn(f32 yawDelta) {
-  float sineYaw = -sin(yawDelta);
-  float cosineYaw = cos(yawDelta);
-  glm::vec3 newForward;
-  newForward.z = forward.z;
-  newForward.x = (forward.x * cosineYaw) + (forward.y * -sineYaw);
-  newForward.y = (forward.x * sineYaw) + (forward.y * cosineYaw);
+void Camera::turn(f32 yawDelta, f32 pitchDelta) {
+  const f32 maxPitch = 70.0f * RadiansPerDegree;
+  f32 sineYaw = -sin(yawDelta);
+  f32 cosineYaw = cos(yawDelta);
+
+  glm::vec3 newForward{};
+
+  // yaw
+  glm::vec2 xyForward = { forward.x, forward.y };
+  xyForward = normalize(xyForward);
+  newForward.x = (xyForward.x * cosineYaw) + (xyForward.y * -sineYaw);
+  newForward.y = (xyForward.x * sineYaw) + (xyForward.y * cosineYaw);
+
+  // pitch
+  pitch += pitchDelta;
+  pitch = Clamp(pitch, -maxPitch, maxPitch);
+  f32 sinePitch = -sin(pitch);
+  f32 cosinePitch = cos(pitch);
+  newForward.z = sinePitch;
+  newForward.x *= cosinePitch;
+  newForward.y *= cosinePitch;
+
   setForward(newForward);
 }
 

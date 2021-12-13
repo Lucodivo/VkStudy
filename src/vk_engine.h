@@ -63,10 +63,6 @@ public:
 	//draw loop
 	void draw();
 
-	void processInput();
-
-	void updateWorld();
-
 	//run main loop
 	void run();
 
@@ -111,13 +107,18 @@ public:
 
 	Camera camera;
 
+	bool editMode = true;
+
 	struct {
 		bool up, down, forward, back, left, right;
 		bool quit;
+		f32 deltaX, deltaY;
 	} input = {};
 
 private:
 	
+	void initSDL();
+
 	void initImgui();
 	
 	void initVulkan();
@@ -150,4 +151,8 @@ private:
 	void renderImgui(VkCommandBuffer cmd);
 
 	void loadShaderModule(std::string filePath, VkShaderModule* outShaderModule);
+
+	void processInput();
+
+	void updateWorld();
 };
