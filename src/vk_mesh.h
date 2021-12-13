@@ -26,5 +26,5 @@ struct Mesh {
 
     bool loadFromGltf(const char* file);
     bool loadFromObj(const char* filename, const char* directory);
-    void uploadMesh(VmaAllocator& allocator, DeletionQueue& deletionQueue);
+    void uploadMesh(VmaAllocator allocator, DeletionQueue* deletionQueue);
 };

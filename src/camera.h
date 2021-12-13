@@ -17,7 +17,8 @@ public:
   glm::mat4 getViewMatrix();
 
   void setForward(glm::vec3 forward);
+  void lookAt(glm::vec3 focusPoint);
 
 private:
-
+  void configVectorsFromForward();
 };

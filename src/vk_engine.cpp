@@ -186,7 +186,7 @@ void VulkanEngine::updateWorld() {
 	local_access bool imguiOpen = true;
 	local_access f32 moveSpeed = 0.2f;
 	local_access f32 turnSpeed = 0.5f;
-	local_access f32 editMode = true;
+	local_access bool editMode = true; // NOTE: We assume bool initialized as false
 	glm::vec3 cameraDelta = {};
 	f32 yawDelta = 0.0f;
 	f32 pitchDelta = 0.0f;
@@ -605,7 +605,9 @@ void VulkanEngine::initSyncStructures()
 void VulkanEngine::initPipelines() {
 	MaterialInfo matInfos[] = {
 		materialVertexColor,
-		materialRedOutline
+		materialRed,
+		materialGreen,
+		materialBlue
 	};
 
 	createFragmentShaderPipeline("fragment_shader_test.frag");
@@ -730,19 +732,25 @@ void VulkanEngine::initScene()
 
 	renderables.push_back(focusObject);
 
-	for (s32 x = -20; x <= 20; x++) {
-		for (s32 y = -20; y <= 20; y++) {
 
-			RenderObject environmentObject;
-			environmentObject.mesh = getMesh("cube");
-			environmentObject.material = getMaterial(materialRedOutline.name);
-			glm::mat4 translation = glm::translate(glm::mat4{ 1.0 }, glm::vec3(x, y, 0));
-			glm::mat4 scale = glm::scale(glm::mat4{ 1.0 }, glm::vec3(0.2, 0.2, 0.2));
-			environmentObject.transformMatrix = translation * scale;
+	RenderObject environmentObject;
+	environmentObject.mesh = getMesh("cube");
+	glm::mat4 scale = glm::scale(glm::mat4{ 1.0 }, glm::vec3(0.2, 0.2, 0.2));
+	glm::mat4 translationX = glm::translate(glm::mat4{ 1.0 }, glm::vec3(10.0f, 0.0f, 0.0f));
+	glm::mat4 translationY = glm::translate(glm::mat4{ 1.0 }, glm::vec3(0.0f, 10.0f, 0.0f));
+	glm::mat4 translationZ = glm::translate(glm::mat4{ 1.0 }, glm::vec3(0.0f, 0.0f, 10.0f));
 
-			renderables.push_back(environmentObject);
-		}
-	}
+	environmentObject.transformMatrix = translationX * scale;
+	environmentObject.material = getMaterial(materialRed.name);
+	renderables.push_back(environmentObject);
+
+	environmentObject.transformMatrix = translationY * scale;
+	environmentObject.material = getMaterial(materialGreen.name);
+	renderables.push_back(environmentObject);
+
+	environmentObject.transformMatrix = translationZ * scale;
+	environmentObject.material = getMaterial(materialBlue.name);
+	renderables.push_back(environmentObject);
 
 	// TODO: sort objects by material to minimize binding pipelines
 	//std::sort(renderables.begin(), renderables.end(), [](const RenderObject& a, const RenderObject& b) {
@@ -753,8 +761,8 @@ void VulkanEngine::initScene()
 void VulkanEngine::initCamera()
 {
 	camera = {};
-	camera.pos = { 15.f, 0.f, 6.f };
-	camera.setForward({-1.f, 0.f, 0.f});
+	camera.pos = { 0.f, -15.f, 6.f };
+	camera.setForward({0.f, 1.f, 0.f});
 }
 
 void VulkanEngine::loadMeshes()
@@ -767,7 +775,7 @@ void VulkanEngine::loadMeshes()
 	triangleMesh.vertices[0].normal = { 0.f, 1.f, 0.0f };
 	triangleMesh.vertices[1].normal = { 0.f, 1.f, 0.0f };
 	triangleMesh.vertices[2].normal = { 0.f, 1.f, 0.0f };
-	triangleMesh.uploadMesh(allocator, mainDeletionQueue);
+	triangleMesh.uploadMesh(allocator, &mainDeletionQueue);
 	meshes["triangle"] = triangleMesh;
 
 	//Mesh monkeyMesh = {};
@@ -777,12 +785,12 @@ void VulkanEngine::loadMeshes()
 
 	Mesh cubeMesh = {};
 	cubeMesh.loadFromGltf("../assets/cube.glb");
-	cubeMesh.uploadMesh(allocator, mainDeletionQueue);
+	cubeMesh.uploadMesh(allocator, &mainDeletionQueue);
 	meshes["cube"] = cubeMesh;
 
 	Mesh mrSaturnMesh = {};
-	mrSaturnMesh.loadFromGltf("../assets/mr_saturn_2.glb");
-	mrSaturnMesh.uploadMesh(allocator, mainDeletionQueue);
+	mrSaturnMesh.loadFromGltf("../assets/mr_saturn.glb");
+	mrSaturnMesh.uploadMesh(allocator, &mainDeletionQueue);
 	meshes["mrSaturn"] = mrSaturnMesh;
 
 }

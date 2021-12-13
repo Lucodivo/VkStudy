@@ -252,7 +252,7 @@ bool Mesh::loadFromObj(const char* file, const char* materialDir)
 	return true;
 }
 
-void Mesh::uploadMesh(VmaAllocator& allocator, DeletionQueue& deletionQueue)
+void Mesh::uploadMesh(VmaAllocator allocator, DeletionQueue* deletionQueue)
 {
 	//allocate vertex buffer
 	VkBufferCreateInfo bufferInfo = {};
@@ -274,7 +274,8 @@ void Mesh::uploadMesh(VmaAllocator& allocator, DeletionQueue& deletionQueue)
 		memcpy(data, vertices.data(), vertices.size() * sizeof(Vertex));
 	vmaUnmapMemory(allocator, vertexBuffer.allocation);
 
-	deletionQueue.pushFunction([allocator, vertexBuffer = this->vertexBuffer]() {
-		vmaDestroyBuffer(allocator, vertexBuffer.buffer, vertexBuffer.allocation);
+	AllocatedBuffer localVertBuffer = this->vertexBuffer; // necessary to capture member variable by value if not using C++ 14
+	deletionQueue->pushFunction([=]() {
+		vmaDestroyBuffer(allocator, localVertBuffer.buffer, localVertBuffer.allocation);
 	});
 }

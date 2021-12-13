@@ -52,9 +52,33 @@ static MaterialInfo materialVertexColor{
 };
 
 static MaterialInfo materialRedOutline {
-	"red",
+	"redOutline",
 	"position.vert",
 	"red.frag",
 	mat4x4PushConstantsRange,
 	VK_POLYGON_MODE_LINE
+};
+
+static MaterialInfo materialRed {
+	"red",
+	"position.vert",
+	"red.frag",
+	mat4x4PushConstantsRange,
+	VK_POLYGON_MODE_FILL
+};
+
+static MaterialInfo materialGreen {
+	"green",
+	"position.vert",
+	"green.frag",
+	mat4x4PushConstantsRange,
+	VK_POLYGON_MODE_FILL
+};
+
+static MaterialInfo materialBlue {
+	"blue",
+	"position.vert",
+	"blue.frag",
+	mat4x4PushConstantsRange,
+	VK_POLYGON_MODE_FILL
 };

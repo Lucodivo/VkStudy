@@ -1,8 +1,13 @@
 #include "camera.h"
 
+#include <iostream>
+
 #include <glm/gtx/transform.hpp>
 
 const glm::vec3 WORLD_UP = { 0.f, 0.f, 1.f };
+
+const f32 maxPitch = 70.0f * RadiansPerDegree;
+const f32 maxPitch_invSine = asin(maxPitch);
 
 glm::mat2 rotate(float angle) {
   float sine = sin(angle);
@@ -15,9 +20,16 @@ void Camera::move(glm::vec3 unitsVec) {
   pos += delta;
 }
 
+void Camera::configVectorsFromForward() {
+  // NOTE: forward assumed to be set
+  this->right = glm::normalize(glm::cross(this->forward, WORLD_UP));
+  this->up = glm::cross(right, forward);
+};
+
 // yawDelta is degrees
 void Camera::turn(f32 yawDelta, f32 pitchDelta) {
-  const f32 maxPitch = 70.0f * RadiansPerDegree;
+  // NOTE: I am flipping the rotation with negative sines.
+  // sin(-x) = -sin(x), cos(-x) = cos(x)
   f32 sineYaw = -sin(yawDelta);
   f32 cosineYaw = cos(yawDelta);
 
@@ -39,14 +51,39 @@ void Camera::turn(f32 yawDelta, f32 pitchDelta) {
   newForward.y *= cosinePitch;
 
   setForward(newForward);
+  configVectorsFromForward();
 }
 
 void Camera::setForward(glm::vec3 forward) {
-  this->forward = glm::normalize(forward);
-  this->right = glm::normalize(glm::cross(this->forward, WORLD_UP));
-  this->up = glm::cross(right, forward);
+  glm::vec3 newForward = glm::normalize(forward);
+
+  // invalid forward
+  if (newForward.z > maxPitch_invSine || newForward.z < -maxPitch_invSine) {
+    std::cout << "ERROR: invalid forward vector sent to camera" << std::endl;
+    return;
+  }
+
+  this->forward = newForward;
+  configVectorsFromForward();
+}
+
+void Camera::lookAt(glm::vec3 focusPoint) {
+  setForward(focusPoint - pos);
 }
 
 glm::mat4 Camera::getViewMatrix() {
-  return glm::lookAt(pos, forward + pos, glm::vec3(0.0f, 0.0f, 1.0f));
+  glm::mat4 measure {
+    right.x, up.x, -forward.x, 0.f,
+    right.y, up.y, -forward.y, 0.f,
+    right.z, up.z, -forward.z, 0.f,
+    0.f, 0.f, 0.f, 1.f
+  };
+
+  glm::mat4 translate {
+    1.f, 0.f, 0.f, 0.f,
+    0.f, 1.f, 0.f, 0.f,
+    0.f, 0.f, 1.f, 0.f,
+    -pos.x, -pos.y, -pos.z, 1.f
+  };
+  return measure * translate;
 }
