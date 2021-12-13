@@ -107,12 +107,12 @@ public:
 
 	Camera camera;
 
-	bool editMode = true;
-
 	struct {
 		bool up, down, forward, back, left, right;
+		bool button1, button2, button3;
+		bool switch1;
 		bool quit;
-		f32 deltaX, deltaY;
+		f32 mouseDeltaX, mouseDeltaY;
 	} input = {};
 
 private:

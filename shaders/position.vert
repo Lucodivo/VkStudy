@@ -1,15 +1,14 @@
 #version 450
 
 layout (location = 0) in vec3 vPosition;
-layout (location = 1) in vec3 vNormal;
 
 //push constants block
 layout( push_constant ) uniform constants
 {
 	mat4 renderMatrix;
-} PushConstants;
+} pc;
 
 void main()
 {
-	gl_Position = PushConstants.renderMatrix * vec4(vPosition, 1.0f);
+	gl_Position = pc.renderMatrix * vec4(vPosition, 1.0f);
 }

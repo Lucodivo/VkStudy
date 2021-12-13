@@ -9,10 +9,10 @@ layout (location = 0) out vec3 outNormal;
 layout( push_constant ) uniform constants
 {
 	mat4 renderMatrix;
-} PushConstants;
+} pc;
 
 void main()
 {
-	gl_Position = PushConstants.renderMatrix * vec4(vPosition, 1.0f);
+	gl_Position = pc.renderMatrix * vec4(vPosition, 1.0f);
 	outNormal = vNormal;
 }

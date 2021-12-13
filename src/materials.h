@@ -35,7 +35,7 @@ const VkPushConstantRange mat4x4PushConstantsRange {
 	sizeof(Mat4x4PushConstants),
 };
 
-static MaterialInfo materialNormalAsRGB {
+static MaterialInfo materialNormalAsColor {
 	"normalAsRGB",
 	"pn_normal_out_0.vert",
 	"in_color.frag",
@@ -43,9 +43,17 @@ static MaterialInfo materialNormalAsRGB {
 	VK_POLYGON_MODE_FILL
 };
 
+static MaterialInfo materialVertexColor{
+	"vertexColor",
+	"pnc_color_out_0.vert",
+	"in_color.frag",
+	mat4x4PushConstantsRange,
+	VK_POLYGON_MODE_FILL
+};
+
 static MaterialInfo materialRedOutline {
 	"red",
-	"pn.vert",
+	"position.vert",
 	"red.frag",
 	mat4x4PushConstantsRange,
 	VK_POLYGON_MODE_LINE

@@ -29,9 +29,17 @@ VertexInputDescription Vertex::getVertexDescriptions()
 	normalAttribute.format = VK_FORMAT_R32G32B32_SFLOAT;
 	normalAttribute.offset = offsetof(Vertex, normal);
 
+	//Color at Location 2
+	VkVertexInputAttributeDescription colorAttribute = {};
+	colorAttribute.binding = 0;
+	colorAttribute.location = 2;
+	colorAttribute.format = VK_FORMAT_R32G32B32_SFLOAT;
+	colorAttribute.offset = offsetof(Vertex, color);
+
 	description.bindings.push_back(mainBinding);
 	description.attributes.push_back(positionAttribute);
 	description.attributes.push_back(normalAttribute);
+	description.attributes.push_back(colorAttribute);
 	return description;
 }
 
@@ -117,7 +125,7 @@ bool Mesh::loadFromGltf(const char* file) {
 
 			// normal attributes
 			bool normalAttributesAvailable = gltfPrimitive->attributes.find(normalIndexKeyString) != gltfPrimitive->attributes.end();
-			Assert(normalAttributesAvailable)
+			Assert(normalAttributesAvailable);
 			gltfAttributeMetadata normalAttribute{};
 			normalAttribute = populateAttributeMetadata(gltfModel, normalIndexKeyString, gltfPrimitive);
 			Assert(positionAttribute.bufferIndex == normalAttribute.bufferIndex);
@@ -143,8 +151,14 @@ bool Mesh::loadFromGltf(const char* file) {
 			f32* normalAttributeData = (f32*)(gltfModel.buffers[normalAttribute.bufferIndex].data.data() + normalAttribute.bufferByteOffset);
 			Assert(positionAttribute.bufferByteLength == normalAttribute.bufferByteLength);
 
-			Vertex vertex{};
-			
+			tinygltf::Material gltfMaterial = gltfModel.materials[gltfPrimitive->material];
+			f64* baseColor = gltfMaterial.pbrMetallicRoughness.baseColorFactor.data();
+			glm::vec3 color = {
+				(f32)baseColor[0],
+				(f32)baseColor[1],
+				(f32)baseColor[2]
+			};
+
 			u32 indexCount = indicesGLTFBufferByteLength / sizeof(u16);
 			u32 vertexCount = positionAttribute.bufferByteLength / positionAttribute.numComponents / sizeof(f32);
 			for (u32 i = 0; i < indexCount; i++) {
@@ -161,6 +175,9 @@ bool Mesh::loadFromGltf(const char* file) {
 				newVert.normal.x = normalAttributeData[3 * vertIndex + 0];
 				newVert.normal.y = normalAttributeData[3 * vertIndex + 1];
 				newVert.normal.z = normalAttributeData[3 * vertIndex + 2];
+
+				//vertex color
+				newVert.color = color;
 
 				vertices.push_back(newVert);
 			}
@@ -215,6 +232,16 @@ bool Mesh::loadFromObj(const char* file, const char* materialDir)
 				newVert.normal.x = attrib.normals[3 * idx.normal_index + 0];
 				newVert.normal.y = attrib.normals[3 * idx.normal_index + 1];
 				newVert.normal.z = attrib.normals[3 * idx.normal_index + 2];
+
+				// Optional: vertex colors
+				if (!attrib.colors.empty()) {
+					newVert.color.x = attrib.colors[3*size_t(idx.vertex_index)+0];
+					newVert.color.x = attrib.colors[3*size_t(idx.vertex_index)+1];
+					newVert.color.x = attrib.colors[3*size_t(idx.vertex_index)+2];
+				}
+				else {
+					newVert.color = newVert.normal;
+				}
 
 				vertices.push_back(newVert);
 			}

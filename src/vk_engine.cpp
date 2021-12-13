@@ -145,67 +145,33 @@ void VulkanEngine::processInput() {
 		case SDL_KEYDOWN:
 			switch (e.key.keysym.sym)
 			{
-			case SDLK_ESCAPE: input.quit = true; break;
-			case SDLK_SPACE: break;
-			case SDLK_a:
-			case SDLK_LEFT:
-				input.left = true;
-				break;
-			case SDLK_d:
-			case SDLK_RIGHT:
-				input.right = true;
-				break;
-			case SDLK_w:
-			case SDLK_UP:
-				input.forward = true;
-				break;
-			case SDLK_s:
-			case SDLK_DOWN:
-				input.back = true;
-				break;
-			case SDLK_q:
-				input.down = true;
-				break;
-			case SDLK_e:
-				input.up = true;
-				break;
+				case SDLK_ESCAPE: input.quit = true; break;
+				case SDLK_SPACE: break;
+				case SDLK_LSHIFT: input.button1 = true; break;
+				case SDLK_a: case SDLK_LEFT: input.left = true; break;
+				case SDLK_d: case SDLK_RIGHT: input.right = true; break;
+				case SDLK_w: case SDLK_UP: input.forward = true; break;
+				case SDLK_s: case SDLK_DOWN: input.back = true; break;
+				case SDLK_q: input.down = true; break;
+				case SDLK_e: input.up = true; break;
 			}
 			break;
 		case SDL_KEYUP:
 			switch (e.key.keysym.sym)
 			{
-			case SDLK_SPACE:
-				editMode = !editMode;
-				SDL_SetRelativeMouseMode(editMode ? SDL_FALSE : SDL_TRUE);
-				break;
-			case SDLK_a:
-			case SDLK_LEFT:
-				input.left = false;
-				break;
-			case SDLK_d:
-			case SDLK_RIGHT:
-				input.right = false;
-				break;
-			case SDLK_w:
-			case SDLK_UP:
-				input.forward = false;
-				break;
-			case SDLK_s:
-			case SDLK_DOWN:
-				input.back = false;
-				break;
-			case SDLK_q:
-				input.down = false;
-				break;
-			case SDLK_e:
-				input.up = false;
-				break;
+				case SDLK_SPACE: input.switch1 = !input.switch1; break;
+				case SDLK_a: case SDLK_LEFT: input.left = false; break;
+				case SDLK_d: case SDLK_RIGHT: input.right = false; break;
+				case SDLK_w: case SDLK_UP: input.forward = false; break;
+				case SDLK_s: case SDLK_DOWN: input.back = false; break;
+				case SDLK_q: input.down = false; break;
+				case SDLK_e: input.up = false;break;
 			}
 			break;
 		case SDL_MOUSEMOTION:
 		{
-			input.deltaX += (f32)e.motion.xrel / windowExtent.width;
-			input.deltaY += (f32)e.motion.yrel / windowExtent.height;
+			input.mouseDeltaX += (f32)e.motion.xrel / windowExtent.width;
+			input.mouseDeltaY += (f32)e.motion.yrel / windowExtent.height;
 			break;
 		}
 		default: break;
@@ -219,10 +185,16 @@ void VulkanEngine::processInput() {
 void VulkanEngine::updateWorld() {
 	local_access bool imguiOpen = true;
 	local_access f32 moveSpeed = 0.2f;
-	local_access f32 turnSpeed = 0.2f;
+	local_access f32 turnSpeed = 0.5f;
+	local_access f32 editMode = true;
 	glm::vec3 cameraDelta = {};
 	f32 yawDelta = 0.0f;
 	f32 pitchDelta = 0.0f;
+
+	if (editMode != input.switch1) {
+		editMode = input.switch1;
+		SDL_SetRelativeMouseMode(editMode ? SDL_FALSE : SDL_TRUE);
+	}
 
 	// Used to keep camera at constant speed regardless of direction
 	const f32 invSqrt[4] = {
@@ -233,7 +205,7 @@ void VulkanEngine::updateWorld() {
 	};
 	u32 invSqrtIndex = 0;
 
-	if (input.left != input.right) {
+	if (input.left ^ input.right) {
 		invSqrtIndex++;
 		if (input.left) {
 			cameraDelta.x = -1.0f;
@@ -243,7 +215,7 @@ void VulkanEngine::updateWorld() {
 		}
 	}
 
-	if (input.back != input.forward) {
+	if (input.back ^ input.forward) {
 		invSqrtIndex++;
 		if (input.back) {
 			cameraDelta.y = -1.0f;
@@ -253,7 +225,7 @@ void VulkanEngine::updateWorld() {
 		}
 	}
 
-	if (input.down != input.up) {
+	if (input.down ^ input.up) {
 		invSqrtIndex++;
 		if (input.down) {
 			cameraDelta.z = -1.0f;
@@ -263,15 +235,15 @@ void VulkanEngine::updateWorld() {
 		}
 	}
 
-	if (!editMode && (input.deltaX != 0.0f || input.deltaY != 0.0f)) {
-		f32 turnSpd = turnSpeed * 20.0;
-		camera.turn(input.deltaX * turnSpd, input.deltaY * turnSpd);
+	if (!editMode && (input.mouseDeltaX != 0.0f || input.mouseDeltaY != 0.0f)) {
+		f32 turnSpd = turnSpeed * 10.0;
+		camera.turn(input.mouseDeltaX * turnSpd, input.mouseDeltaY * turnSpd);
 	}
 	
 	// reset some input variables
 	{
-		input.deltaX = 0.0f;
-		input.deltaY = 0.0f;
+		input.mouseDeltaX = 0.0f;
+		input.mouseDeltaY = 0.0f;
 	}
 
 	ImGui::Begin("Variable Adjustments", &imguiOpen, 0);
@@ -632,7 +604,7 @@ void VulkanEngine::initSyncStructures()
 
 void VulkanEngine::initPipelines() {
 	MaterialInfo matInfos[] = {
-		materialNormalAsRGB,
+		materialVertexColor,
 		materialRedOutline
 	};
 
@@ -749,7 +721,7 @@ void VulkanEngine::initScene()
 {
 	RenderObject focusObject;
 	focusObject.mesh = getMesh("mrSaturn");
-	focusObject.material = getMaterial(materialNormalAsRGB.name);
+	focusObject.material = getMaterial(materialVertexColor.name);
 	glm::mat4 saturnTransform = glm::mat4{ 1.0f };
 	//saturnTransform = glm::rotate(saturnTransform, 90.0f * RadiansPerDegree, glm::vec3(0.f, 0.f, 1.f));
 	//saturnTransform = glm::rotate(saturnTransform, -90.0f * RadiansPerDegree, glm::vec3(0.f, 1.f, 0.f));
@@ -797,6 +769,11 @@ void VulkanEngine::loadMeshes()
 	triangleMesh.vertices[2].normal = { 0.f, 1.f, 0.0f };
 	triangleMesh.uploadMesh(allocator, mainDeletionQueue);
 	meshes["triangle"] = triangleMesh;
+
+	//Mesh monkeyMesh = {};
+	//monkeyMesh.loadFromObj("../assets/monkey_smooth.obj", "../assets/");
+	//monkeyMesh.uploadMesh(allocator, mainDeletionQueue);
+	//meshes["monkey"] = monkeyMesh;
 
 	Mesh cubeMesh = {};
 	cubeMesh.loadFromGltf("../assets/cube.glb");
