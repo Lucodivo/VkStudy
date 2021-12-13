@@ -43,8 +43,13 @@ typedef size_t memory_index;
 #define Max(x, y) (x > y) ? x : y
 #define Clamp(c, lo, hi) Max(lo, Min(hi, c))
 
-struct Extent2D
-{
-  u32 width;
-  u32 height;
-};
+#define VK_CHECK(x)                                                 \
+	do                                                              \
+	{                                                               \
+		VkResult err = x;                                           \
+		if (err)                                                    \
+		{                                                           \
+			std::cout <<"Detected Vulkan error: " << err << std::endl; \
+			abort();                                                \
+		}                                                           \
+	} while (0)

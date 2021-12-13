@@ -17,8 +17,13 @@ void Camera::move(glm::vec3 unitsVec) {
 
 // yawDelta is degrees
 void Camera::turn(f32 yawDelta) {
-  glm::mat2 rotYaw = rotate(yawDelta);
-  // TODO
+  float sineYaw = -sin(yawDelta);
+  float cosineYaw = cos(yawDelta);
+  glm::vec3 newForward;
+  newForward.z = forward.z;
+  newForward.x = (forward.x * cosineYaw) + (forward.y * -sineYaw);
+  newForward.y = (forward.x * sineYaw) + (forward.y * cosineYaw);
+  setForward(newForward);
 }
 
 void Camera::setForward(glm::vec3 forward) {

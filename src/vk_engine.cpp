@@ -1,4 +1,4 @@
-﻿
+
 #include "vk_engine.h"
 
 #include <iostream>
@@ -19,26 +19,6 @@
 #define DEFAULT_NANOSEC_TIMEOUT 1'000'000'000
 
 #define PRESENT_MODE VK_PRESENT_MODE_FIFO_KHR
-
-#define VK_CHECK(x)                                                 \
-	do                                                              \
-	{                                                               \
-		VkResult err = x;                                           \
-		if (err)                                                    \
-		{                                                           \
-			std::cout <<"Detected Vulkan error: " << err << std::endl; \
-			abort();                                                \
-		}                                                           \
-	} while (0)
-
-static void imgui_check_vk_error(VkResult err)
-{
-	if (err == 0)
-		return;
-	fprintf(stderr, "[vulkan] Error: VkResult = %d\n", err);
-	if (err < 0)
-		abort();
-}
 
 const VkClearValue colorClearValue{
 	{ 0.1f, 0.1f, 0.1f, 1.0f }
@@ -84,7 +64,6 @@ void VulkanEngine::cleanup()
 
 	if (isInitialized) 
 	{
-		ImGui_ImplVulkan_Shutdown();
 		mainDeletionQueue.flush();
 		vmaDestroyAllocator(allocator);
 		vkDestroyDevice(device, nullptr);
@@ -123,12 +102,10 @@ void VulkanEngine::draw()
 
 		drawFragmentShader(cmd);
 		drawObjects(cmd, renderables.data(), renderables.size());
-		drawImgui(cmd);
+		renderImgui(cmd);
 
 		// finishes render and transitions image to layout specified in renderpass
 		vkCmdEndRenderPass(cmd);
-
-		imguiData.window.FrameIndex = swapchainImageIndex;
 	}
 	VK_CHECK(vkEndCommandBuffer(cmd));
 
@@ -165,63 +142,146 @@ void VulkanEngine::draw()
 	frameNumber++;
 }
 
+void VulkanEngine::processInput() {
+	SDL_Event e;
+	bool bQuit = false;
+
+	while (SDL_PollEvent(&e) != 0)
+	{
+		switch (e.type) {
+		case SDL_QUIT: input.quit = true; break;
+		case SDL_KEYDOWN:
+			switch (e.key.keysym.sym)
+			{
+			case SDLK_ESCAPE: input.quit = true; break;
+			case SDLK_SPACE: break;
+			case SDLK_a:
+			case SDLK_LEFT:
+				input.left = true;
+				break;
+			case SDLK_d:
+			case SDLK_RIGHT:
+				input.right = true;
+				break;
+			case SDLK_w:
+			case SDLK_UP:
+				input.forward = true;
+				break;
+			case SDLK_s:
+			case SDLK_DOWN:
+				input.back = true;
+				break;
+			case SDLK_q:
+				input.down = true;
+				break;
+			case SDLK_e:
+				input.up = true;
+				break;
+			}
+			break;
+		case SDL_KEYUP:
+			switch (e.key.keysym.sym)
+			{
+			case SDLK_a:
+			case SDLK_LEFT:
+				input.left = false;
+				break;
+			case SDLK_d:
+			case SDLK_RIGHT:
+				input.right = false;
+				break;
+			case SDLK_w:
+			case SDLK_UP:
+				input.forward = false;
+				break;
+			case SDLK_s:
+			case SDLK_DOWN:
+				input.back = false;
+				break;
+			case SDLK_q:
+				input.down = false;
+				break;
+			case SDLK_e:
+				input.up = false;
+				break;
+			}
+			break;
+		case SDL_MOUSEMOTION:
+		{
+			f32 yawDelta = 5.0f * ((f32)e.motion.xrel / windowExtent.width);
+			break;
+		}
+		default: break;
+		}
+
+		// also send input to ImGui
+		ImGui_ImplSDL2_ProcessEvent(&e);
+	}
+}
+
+void VulkanEngine::updateWorld() {
+	local_access bool imguiOpen = true;
+	local_access f32 moveSpeed = 0.2f;
+	glm::vec3 cameraDelta = {};
+	f32 yawDelta = 0.0f;
+	f32 pitchDelta = 0.0f;
+	const f32 invSqrt[4] = {
+		0.0f,
+		1.0f,
+		0.7071067f,
+		0.5773502f
+	};
+	u32 invSqrtIndex = 0;
+
+	if (input.left != input.right) {
+		invSqrtIndex++;
+		if (input.left) {
+			cameraDelta.x = -1.0f;
+		}
+		else {
+			cameraDelta.x = 1.0f;
+		}
+	}
+
+	if (input.back != input.forward) {
+		invSqrtIndex++;
+		if (input.back) {
+			cameraDelta.y = -1.0f;
+		}
+		else {
+			cameraDelta.y = 1.0f;
+		}
+	}
+
+	if (input.down != input.up) {
+		invSqrtIndex++;
+		if (input.down) {
+			cameraDelta.z = -1.0f;
+		}
+		else {
+			cameraDelta.z = 1.0f;
+		}
+	}
+
+	ImGui::Begin("Variable Adjustments", &imguiOpen, 0);
+	{
+		ImGui::SliderFloat("move speed", &moveSpeed, 0.1f, 1.0f, "%.2f");
+	}
+	ImGui::End();
+
+	camera.move(cameraDelta * invSqrt[invSqrtIndex] * moveSpeed);
+}
+
 void VulkanEngine::run()
 {
 	SDL_Event e;
 	bool bQuit = false;
 
-	while (!bQuit)
+	while (!input.quit)
 	{
-		glm::vec3 cameraDelta = {};
-		const f32 moveSpeed = 0.2f;
-		f32 yawDelta = 0.0f;
-		f32 pitchDelta = 0.0f;
-		while (SDL_PollEvent(&e) != 0)
-		{
-			switch (e.type) {
-			case SDL_QUIT: bQuit = true; break;
-			case SDL_KEYDOWN:
-				switch (e.key.keysym.sym)
-				{
-				case SDLK_ESCAPE: bQuit = true; break;
-				case SDLK_SPACE: break;
-				case SDLK_a:
-				case SDLK_LEFT:  
-					cameraDelta.x -= moveSpeed;
-					break;
-				case SDLK_d:
-				case SDLK_RIGHT:
-					cameraDelta.x += moveSpeed;
-					break;
-				case SDLK_w:
-				case SDLK_UP:
-					cameraDelta.y += moveSpeed;
-					break;
-				case SDLK_s:
-				case SDLK_DOWN:
-					cameraDelta.y -= moveSpeed;
-					break;
-				case SDLK_q:
-					cameraDelta.z -= moveSpeed;
-					break;
-				case SDLK_e:
-					cameraDelta.z += moveSpeed;
-					break;
-				}
-				break;
-			case SDL_MOUSEMOTION:
-				{
-				yawDelta += 5.0f * ((f32)e.motion.xrel / windowExtent.width);
-				break;
-				}
-			case SDL_KEYUP:
-				break;
-			default: break;
-			}
-		}
-
-		camera.move(cameraDelta);
-		camera.turn(yawDelta);
+		processInput();
+		startImguiFrame();
+		updateWorld();
 		draw();
 	}
 }
@@ -256,6 +316,7 @@ void VulkanEngine::initImgui()
 	imguiWindow.FrameSemaphores = nullptr;
 
 	// Create Descriptor Pool
+	VkDescriptorPool imguiDescriptorPool;
 	{
 		VkResult err;
 		VkDescriptorPoolSize pool_sizes[] =
@@ -278,7 +339,7 @@ void VulkanEngine::initImgui()
 		pool_info.maxSets = 1000 * IM_ARRAYSIZE(pool_sizes);
 		pool_info.poolSizeCount = (uint32_t)IM_ARRAYSIZE(pool_sizes);
 		pool_info.pPoolSizes = pool_sizes;
-		VK_CHECK(vkCreateDescriptorPool(device, &pool_info, nullptr, &imguiData.DescriptorPool));
+		VK_CHECK(vkCreateDescriptorPool(device, &pool_info, nullptr, &imguiDescriptorPool));
 	}
 
 	ImGui_ImplSDL2_InitForVulkan(window);
@@ -289,12 +350,10 @@ void VulkanEngine::initImgui()
 	init_info.QueueFamily = graphicsQueueFamily;
 	init_info.Queue = graphicsQueue;
 	init_info.PipelineCache = VK_NULL_HANDLE;
-	init_info.DescriptorPool = imguiData.DescriptorPool;
-	init_info.MinImageCount = 2;
+	init_info.DescriptorPool = imguiDescriptorPool;
+	init_info.MinImageCount = 3;
 	init_info.ImageCount = swapchainImageViews.size();
 	init_info.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
-	init_info.Allocator = nullptr;
-	init_info.CheckVkResultFn = imgui_check_vk_error;
 	ImGui_ImplVulkan_Init(&init_info, imguiWindow.RenderPass);
 
 	// Upload Fonts
@@ -320,7 +379,8 @@ void VulkanEngine::initImgui()
 	}
 
 	mainDeletionQueue.pushFunction([=]() {
-		vkDestroyDescriptorPool(device, imguiData.DescriptorPool, nullptr);
+		vkDestroyDescriptorPool(device, imguiDescriptorPool, nullptr);
+		ImGui_ImplVulkan_Shutdown();
 	});
 }
 
@@ -707,22 +767,17 @@ void VulkanEngine::loadMeshes()
 	triangleMesh.vertices[0].normal = { 0.f, 1.f, 0.0f };
 	triangleMesh.vertices[1].normal = { 0.f, 1.f, 0.0f };
 	triangleMesh.vertices[2].normal = { 0.f, 1.f, 0.0f };
-	uploadMesh(triangleMesh);
+	triangleMesh.uploadMesh(allocator, mainDeletionQueue);
 	meshes["triangle"] = triangleMesh;
 
-	//Mesh monkeyMesh = {};
-	//monkeyMesh.loadFromObj("../assets/monkey_smooth.obj", "../assets/");
-	//uploadMesh(monkeyMesh);
-	//meshes["monkey"] = monkeyMesh;
-
 	Mesh cubeMesh = {};
-	cubeMesh.loadFromGltf("../assets/cube.glb", true);
-	uploadMesh(cubeMesh);
+	cubeMesh.loadFromGltf("../assets/cube.glb");
+	cubeMesh.uploadMesh(allocator, mainDeletionQueue);
 	meshes["cube"] = cubeMesh;
 
 	Mesh mrSaturnMesh = {};
-	mrSaturnMesh.loadFromGltf("../assets/mr_saturn_2.glb", true);
-	uploadMesh(mrSaturnMesh);
+	mrSaturnMesh.loadFromGltf("../assets/mr_saturn_2.glb");
+	mrSaturnMesh.uploadMesh(allocator, mainDeletionQueue);
 	meshes["mrSaturn"] = mrSaturnMesh;
 
 }
@@ -856,43 +911,18 @@ void VulkanEngine::drawObjects(VkCommandBuffer cmd, RenderObject* first, u32 cou
 	}
 }
 
-void VulkanEngine::drawImgui(VkCommandBuffer cmd)
-{
-	// Start the Dear ImGui frame
+void VulkanEngine::startImguiFrame() {
 	ImGui_ImplVulkan_NewFrame();
 	ImGui_ImplSDL2_NewFrame(window);
 	ImGui::NewFrame();
-	{
-		static float f = 0.0f;
-		static int counter = 0;
+}
 
-		ImGui::Begin("Hello, world!");                          // Create a window called "Hello, world!" and append into it.
-
-		ImGui::Text("This is some useful text.");               // Display some text (you can use a format strings too)
-
-		ImGui::SliderFloat("float", &f, 0.0f, 1.0f);            // Edit 1 float using a slider from 0.0f to 1.0f
-
-		if (ImGui::Button("Button"))                            // Buttons return true when clicked (most widgets return true when edited/activated)
-			counter++;
-		ImGui::SameLine();
-		ImGui::Text("counter = %d", counter);
-
-		ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
-		ImGui::End();
-	}
-
-	{
-		ImGui::Begin("Another Window");   // Pass a pointer to our bool variable (the window will have a closing button that will clear the bool when clicked)
-		ImGui::Text("Hello from another window!");
-		ImGui::End();
-	}
-
+void VulkanEngine::renderImgui(VkCommandBuffer cmd) {
 	// Rendering
 	ImGui::Render();
-	ImDrawData* draw_data = ImGui::GetDrawData();
 
 	// Record dear imgui primitives into command buffer
-	ImGui_ImplVulkan_RenderDrawData(draw_data, cmd);
+	ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), cmd);
 }
 
 void VulkanEngine::loadShaderModule(std::string filePath, VkShaderModule* outShaderModule)

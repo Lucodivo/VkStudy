@@ -35,7 +35,15 @@ VertexInputDescription Vertex::getVertexDescriptions()
 	return description;
 }
 
-bool Mesh::loadFromGltf(const char* file, bool glb) {
+bool Mesh::loadFromGltf(const char* file) {
+	// simple check for .glb binary file type
+	bool glb = false;
+	size_t strLength = strlen(file);
+	char lastChar = file[strLength - 1];
+	if (lastChar == 'b' || lastChar == 'B') {
+		glb = true;
+	}
+	
 	struct gltfAttributeMetadata {
 		u32 accessorIndex;
 		u32 numComponents;
@@ -215,4 +223,31 @@ bool Mesh::loadFromObj(const char* file, const char* materialDir)
 	}
 
 	return true;
+}
+
+void Mesh::uploadMesh(VmaAllocator& allocator, DeletionQueue& deletionQueue)
+{
+	//allocate vertex buffer
+	VkBufferCreateInfo bufferInfo = {};
+	bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+	bufferInfo.size = vertices.size() * sizeof(Vertex);
+	bufferInfo.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+
+	//let the VMA library know that this data should be writeable by CPU, but also readable by GPU
+	VmaAllocationCreateInfo vmaallocInfo = {};
+	vmaallocInfo.usage = VMA_MEMORY_USAGE_CPU_TO_GPU;
+
+	VK_CHECK(vmaCreateBuffer(allocator, &bufferInfo, &vmaallocInfo,
+		&vertexBuffer.buffer,
+		&vertexBuffer.allocation,
+		nullptr));
+
+	void* data;
+	vmaMapMemory(allocator, vertexBuffer.allocation, &data);
+		memcpy(data, vertices.data(), vertices.size() * sizeof(Vertex));
+	vmaUnmapMemory(allocator, vertexBuffer.allocation);
+
+	deletionQueue.pushFunction([allocator, vertexBuffer = this->vertexBuffer]() {
+		vmaDestroyBuffer(allocator, vertexBuffer.buffer, vertexBuffer.allocation);
+	});
 }

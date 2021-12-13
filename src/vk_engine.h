@@ -1,12 +1,10 @@
-﻿// vulkan_guide.h : Include file for standard system include files,
+// vulkan_guide.h : Include file for standard system include files,
 // or project specific include files.
 
 #pragma once
 
 #include <vk_types.h>
 #include <vector>
-#include <functional>
-#include <deque>
 
 #include <glm/glm.hpp>
 #include "vk_mesh.h"
@@ -46,22 +44,6 @@ public:
 	VkPipeline buildPipeline(VkDevice device, VkRenderPass pass);
 };
 
-struct DeletionQueue
-{
-	std::vector<std::function<void()>> deletors;
-
-	void pushFunction(std::function<void()>&& function) {
-		deletors.push_back(function);
-	}
-
-	void flush() {
-		for(s32 i = deletors.size() - 1; i >= 0; i--) {
-			deletors[i]();
-		}
-		deletors.clear();
-	}
-};
-
 class VulkanEngine {
 public:
 
@@ -80,6 +62,10 @@ public:
 
 	//draw loop
 	void draw();
+
+	void processInput();
+
+	void updateWorld();
 
 	//run main loop
 	void run();
@@ -125,13 +111,12 @@ public:
 
 	Camera camera;
 
-private:
+	struct {
+		bool up, down, forward, back, left, right;
+		bool quit;
+	} input = {};
 
-	struct ImguiData {
-		VkPipelineCache PipelineCache;
-		VkDescriptorPool DescriptorPool;
-		ImGui_ImplVulkanH_Window window;
-	} imguiData;
+private:
 	
 	void initImgui();
 	
@@ -161,7 +146,8 @@ private:
 
 	void drawObjects(VkCommandBuffer cmd, RenderObject* first, u32 count);
 
-	void drawImgui(VkCommandBuffer cmd);
+	void startImguiFrame();
+	void renderImgui(VkCommandBuffer cmd);
 
 	void loadShaderModule(std::string filePath, VkShaderModule* outShaderModule);
 };

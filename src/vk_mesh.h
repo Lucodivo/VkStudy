@@ -21,10 +21,9 @@ struct Vertex {
 
 struct Mesh {
     std::vector<Vertex> vertices;
-
     AllocatedBuffer vertexBuffer;
 
-    bool loadFromGltf(const char* file, bool glb = false);
-
+    bool loadFromGltf(const char* file);
     bool loadFromObj(const char* filename, const char* directory);
+    void uploadMesh(VmaAllocator& allocator, DeletionQueue& deletionQueue);
 };
