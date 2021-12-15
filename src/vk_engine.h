@@ -16,6 +16,8 @@
 #include "imgui_impl_sdl.h"
 #include "imgui_impl_vulkan.h"
 
+const u32 FRAME_OVERLAP = 2;
+
 struct Material {
 	VkPipeline pipeline;
 	VkPipelineLayout pipelineLayout;
@@ -26,6 +28,24 @@ struct RenderObject {
 	Material* material;
 	glm::mat4 transformMatrix;
 };
+
+struct GPUCameraData {
+	glm::mat4 view;
+	glm::mat4 projection;
+	glm::mat4 viewproj;
+};
+
+struct FrameData {
+	VkSemaphore presentSemaphore, renderSemaphore;
+	VkFence renderFence;
+
+	VkCommandPool commandPool;
+	VkCommandBuffer mainCommandBuffer;
+
+	AllocatedBuffer cameraBuffer;
+	VkDescriptorSet globalDescriptor;
+};
+
 
 class PipelineBuilder {
 public:
@@ -79,14 +99,11 @@ public:
 	
 	VkQueue graphicsQueue; //queue we will submit to
 	uint32_t graphicsQueueFamily; //family of that queue
-	VkCommandPool commandPool; //the command pool for our commands
-	VkCommandBuffer mainCommandBuffer; //the buffer we will record into
 
 	VkRenderPass renderPass;
 	std::vector<VkFramebuffer> framebuffers;
 
-	VkSemaphore presentSemaphore, renderSemaphore;
-	VkFence renderFence;
+	FrameData frames[FRAME_OVERLAP];
 
 	DeletionQueue mainDeletionQueue;
 
@@ -106,6 +123,9 @@ public:
 	VkPipelineLayout fragmentShaderPipelineLayout;
 
 	Camera camera;
+
+	VkDescriptorSetLayout globalSetLayout;
+	VkDescriptorPool descriptorPool;
 
 	struct {
 		bool up, down, forward, back, left, right;
@@ -127,6 +147,7 @@ private:
 	void initDefaultRenderpass();
 	void initFramebuffers();
 	void initSyncStructures();
+	void initDescriptors();
 	void createPipeline(MaterialInfo matInfo);
 	void initPipelines();
 	void createFragmentShaderPipeline(const char* fragmentShader);
@@ -155,4 +176,7 @@ private:
 	void processInput();
 
 	void updateWorld();
+	FrameData& getCurrentFrame();
+
+	AllocatedBuffer createBuffer(size_t allocSize, VkBufferUsageFlags usage, VmaMemoryUsage memUsage);
 };

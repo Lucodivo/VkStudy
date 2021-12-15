@@ -41,6 +41,7 @@ void VulkanEngine::init()
 	initDefaultRenderpass();
 	initFramebuffers();
 	initSyncStructures();
+	initDescriptors();
 	initPipelines();
 	loadMeshes();
 	initScene();
@@ -52,7 +53,7 @@ void VulkanEngine::init()
 
 void VulkanEngine::cleanup()
 {	
-	VK_CHECK(vkWaitForFences(device, 1, &renderFence, true, DEFAULT_NANOSEC_TIMEOUT));
+	VK_CHECK(vkDeviceWaitIdle(device));
 
 	if (isInitialized) 
 	{
@@ -68,16 +69,17 @@ void VulkanEngine::cleanup()
 
 void VulkanEngine::draw()
 {
-	VK_CHECK(vkWaitForFences(device, 1, &renderFence, true, DEFAULT_NANOSEC_TIMEOUT));
-	VK_CHECK(vkResetFences(device, 1, &renderFence));
+	FrameData& frame = getCurrentFrame();
+	VK_CHECK(vkWaitForFences(device, 1, &frame.renderFence, true, DEFAULT_NANOSEC_TIMEOUT));
+	VK_CHECK(vkResetFences(device, 1, &frame.renderFence));
 
 	// present semaphore is signaled when the presentation engine has finished using the image and
 	// it may now be used as a target for drawing
 	u32 swapchainImageIndex;
-	VK_CHECK(vkAcquireNextImageKHR(device, swapchain, DEFAULT_NANOSEC_TIMEOUT, presentSemaphore, nullptr, &swapchainImageIndex));
+	VK_CHECK(vkAcquireNextImageKHR(device, swapchain, DEFAULT_NANOSEC_TIMEOUT, frame.presentSemaphore, nullptr, &swapchainImageIndex));
 
-	VK_CHECK(vkResetCommandBuffer(mainCommandBuffer, 0));
-	VkCommandBuffer cmd = mainCommandBuffer;
+	VkCommandBuffer cmd = frame.mainCommandBuffer;
+	VK_CHECK(vkResetCommandBuffer(cmd, 0));
 
 	VkCommandBufferBeginInfo cmdBeginInfo = vkinit::commandBufferBeginInfo(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
 
@@ -110,22 +112,22 @@ void VulkanEngine::draw()
 	submitInfo.pWaitDstStageMask = &waitStage;
 	//we want to wait on the presentSemaphore, as that semaphore is signaled when the swapchain is ready
 	submitInfo.waitSemaphoreCount = 1;
-	submitInfo.pWaitSemaphores = &presentSemaphore;
+	submitInfo.pWaitSemaphores = &frame.presentSemaphore;
 	//we will signal the renderSemaphore, to signal that rendering has finished
 	submitInfo.signalSemaphoreCount = 1;
-	submitInfo.pSignalSemaphores = &renderSemaphore;
+	submitInfo.pSignalSemaphores = &frame.renderSemaphore;
 	submitInfo.commandBufferCount = 1;
 	submitInfo.pCommandBuffers = &cmd;
 
 	// renderFence will now block until the graphic commands finish execution
-	VK_CHECK(vkQueueSubmit(graphicsQueue, 1, &submitInfo, renderFence));
+	VK_CHECK(vkQueueSubmit(graphicsQueue, 1, &submitInfo, frame.renderFence));
 
 	VkPresentInfoKHR presentInfo = {};
 	presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
 	presentInfo.pNext = nullptr;
 	presentInfo.pSwapchains = &swapchain;
 	presentInfo.swapchainCount = 1;
-	presentInfo.pWaitSemaphores = &renderSemaphore;
+	presentInfo.pWaitSemaphores = &frame.renderSemaphore;
 	presentInfo.waitSemaphoreCount = 1;
 	presentInfo.pImageIndices = &swapchainImageIndex;
 
@@ -256,6 +258,40 @@ void VulkanEngine::updateWorld() {
 	camera.move(cameraDelta * (invSqrt[invSqrtIndex] * moveSpeed));
 }
 
+FrameData& VulkanEngine::getCurrentFrame()
+{
+	return frames[frameNumber % FRAME_OVERLAP];
+}
+
+AllocatedBuffer VulkanEngine::createBuffer(size_t allocSize, VkBufferUsageFlags usage, VmaMemoryUsage memUsage)
+{
+	//allocate vertex buffer
+	VkBufferCreateInfo bufferInfo = {};
+	bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+	bufferInfo.pNext = nullptr;
+
+	bufferInfo.size = allocSize;
+	bufferInfo.usage = usage;
+
+
+	VmaAllocationCreateInfo vmaallocInfo = {};
+	vmaallocInfo.usage = memUsage;
+
+	AllocatedBuffer newBuffer;
+
+	//allocate the buffer
+	VK_CHECK(vmaCreateBuffer(allocator, &bufferInfo, &vmaallocInfo,
+		&newBuffer.buffer,
+		&newBuffer.allocation,
+		nullptr));
+
+	mainDeletionQueue.pushFunction([=]() {
+		vmaDestroyBuffer(allocator, newBuffer.buffer, newBuffer.allocation);
+		});
+
+	return newBuffer;
+}
+
 void VulkanEngine::run()
 {
 	SDL_Event e;
@@ -359,19 +395,19 @@ void VulkanEngine::initImgui()
 	// Upload Fonts
 	{
 		// Use any command queue
-		VK_CHECK(vkResetCommandPool(device, commandPool, 0));
+		VK_CHECK(vkResetCommandPool(device, frames[0].commandPool, 0));
 		VkCommandBufferBeginInfo begin_info = {};
 		begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
 		begin_info.flags |= VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-		VK_CHECK(vkBeginCommandBuffer(mainCommandBuffer, &begin_info));
+		VK_CHECK(vkBeginCommandBuffer(frames[0].mainCommandBuffer, &begin_info));
 
-		ImGui_ImplVulkan_CreateFontsTexture(mainCommandBuffer);
+		ImGui_ImplVulkan_CreateFontsTexture(frames[0].mainCommandBuffer);
 
 		VkSubmitInfo end_info = {};
 		end_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
 		end_info.commandBufferCount = 1;
-		end_info.pCommandBuffers = &mainCommandBuffer;
-		VK_CHECK(vkEndCommandBuffer(mainCommandBuffer));
+		end_info.pCommandBuffers = &frames[0].mainCommandBuffer;
+		VK_CHECK(vkEndCommandBuffer(frames[0].mainCommandBuffer));
 		VK_CHECK(vkQueueSubmit(graphicsQueue, 1, &end_info, VK_NULL_HANDLE));
 
 		VK_CHECK(vkDeviceWaitIdle(device));
@@ -488,14 +524,19 @@ void VulkanEngine::initSwapchain()
 void VulkanEngine::initCommands()
 {
 	VkCommandPoolCreateInfo commandPoolInfo = vkinit::commandPoolCreateInfo(graphicsQueueFamily, VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT);
-	VK_CHECK(vkCreateCommandPool(device, &commandPoolInfo, nullptr, &commandPool));
 
-	VkCommandBufferAllocateInfo cmdAllocInfo = vkinit::commandBufferAllocateInfo(commandPool, 1, VK_COMMAND_BUFFER_LEVEL_PRIMARY);
-	VK_CHECK(vkAllocateCommandBuffers(device, &cmdAllocInfo, &mainCommandBuffer));
+	for (u32 i = 0; i < FRAME_OVERLAP; i++) {
+		VK_CHECK(vkCreateCommandPool(device, &commandPoolInfo, nullptr, &frames[i].commandPool));
+		
+		VkCommandBufferAllocateInfo cmdAllocInfo = vkinit::commandBufferAllocateInfo(frames[i].commandPool, 1, VK_COMMAND_BUFFER_LEVEL_PRIMARY);
+		
+		VK_CHECK(vkAllocateCommandBuffers(device, &cmdAllocInfo, &frames[i].mainCommandBuffer));
 
-	mainDeletionQueue.pushFunction([=]() {
-		vkDestroyCommandPool(device, commandPool, nullptr);
-	});
+		mainDeletionQueue.pushFunction([=]() {
+			vkDestroyCommandPool(device, frames[i].commandPool, nullptr);
+		});
+	}
+
 }
 
 void VulkanEngine::initDefaultRenderpass()
@@ -586,19 +627,90 @@ void VulkanEngine::initSyncStructures()
 	fenceCreateInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
 	fenceCreateInfo.pNext = nullptr;
 	fenceCreateInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
-	VK_CHECK(vkCreateFence(device, &fenceCreateInfo, nullptr, &renderFence));
 
 	VkSemaphoreCreateInfo semaphoreCreateInfo = {};
 	semaphoreCreateInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
 	semaphoreCreateInfo.pNext = nullptr;
 	semaphoreCreateInfo.flags = 0;
-	VK_CHECK(vkCreateSemaphore(device, &semaphoreCreateInfo, nullptr, &presentSemaphore));
-	VK_CHECK(vkCreateSemaphore(device, &semaphoreCreateInfo, nullptr, &renderSemaphore));
+
+	for (u32 i = 0; i < FRAME_OVERLAP; i++) {
+		VK_CHECK(vkCreateFence(device, &fenceCreateInfo, nullptr, &frames[i].renderFence));
+		VK_CHECK(vkCreateSemaphore(device, &semaphoreCreateInfo, nullptr, &frames[i].presentSemaphore));
+		VK_CHECK(vkCreateSemaphore(device, &semaphoreCreateInfo, nullptr, &frames[i].renderSemaphore));
+		mainDeletionQueue.pushFunction([=]() {
+			vkDestroyFence(device, frames[i].renderFence, nullptr);
+			vkDestroySemaphore(device, frames[i].renderSemaphore, nullptr);
+			vkDestroySemaphore(device, frames[i].presentSemaphore, nullptr);
+			});
+	}
+
+}
+
+void VulkanEngine::initDescriptors()
+{
+	// reserve 10 uniform buffer pointers/handles for a maximum of 10 descriptor sets allocated from the pool
+	VkDescriptorPoolSize descriptorPoolSize = { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 10 };
+
+	VkDescriptorPoolCreateInfo pool_info = {};
+	pool_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+	pool_info.flags = 0;
+	pool_info.maxSets = 10;
+	pool_info.poolSizeCount = 1;
+	pool_info.pPoolSizes = &descriptorPoolSize;
+
+	vkCreateDescriptorPool(device, &pool_info, nullptr, &descriptorPool);
+
+	VkDescriptorSetLayoutBinding cameraBufferBinding = {};
+	cameraBufferBinding.binding = 0;
+	cameraBufferBinding.descriptorCount = 1;
+	cameraBufferBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+	cameraBufferBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+
+	VkDescriptorSetLayoutCreateInfo setInfo = {};
+	setInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+	setInfo.pNext = nullptr;
+	setInfo.bindingCount = 1;
+	setInfo.flags = 0;
+	setInfo.pBindings = &cameraBufferBinding;
+
+	vkCreateDescriptorSetLayout(device, &setInfo, nullptr, &globalSetLayout);
+
+	VkDescriptorSetAllocateInfo descriptorSetAllocInfo = {};
+	descriptorSetAllocInfo.pNext = nullptr;
+	descriptorSetAllocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+	descriptorSetAllocInfo.descriptorPool = descriptorPool;
+	descriptorSetAllocInfo.descriptorSetCount = 1;
+	descriptorSetAllocInfo.pSetLayouts = &globalSetLayout;
+
+	for (u32 i = 0; i < FRAME_OVERLAP; i++)
+	{
+		FrameData& frame = frames[i];
+		frame.cameraBuffer = createBuffer(sizeof(GPUCameraData), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
+
+		vkAllocateDescriptorSets(device, &descriptorSetAllocInfo, &frame.globalDescriptor);
+
+		// info about the buffer the descriptor will point at
+		VkDescriptorBufferInfo descBufferInfo;
+		descBufferInfo.buffer = frame.cameraBuffer.buffer;
+		descBufferInfo.offset = 0;
+		descBufferInfo.range = sizeof(GPUCameraData);
+
+		VkWriteDescriptorSet setWrite = {};
+		setWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+		setWrite.pNext = nullptr;
+		setWrite.dstSet = frame.globalDescriptor; // descriptor set being written to
+		setWrite.dstBinding = 0; // Binding index being written to (as used in shader files)
+		setWrite.descriptorCount = 1; // # of elements in pImageInfo/pBufferInfo/pTexelBufferView
+		setWrite.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+		setWrite.pBufferInfo = &descBufferInfo;
+
+		vkUpdateDescriptorSets(device, 1, &setWrite, 0, nullptr);
+	}
 
 	mainDeletionQueue.pushFunction([=]() {
-		vkDestroyFence(device, renderFence, nullptr);
-		vkDestroySemaphore(device, renderSemaphore, nullptr);
-		vkDestroySemaphore(device, presentSemaphore, nullptr);
+		// freeing descriptor pool frees descriptor layouts
+		vkDestroyDescriptorSetLayout(device, globalSetLayout, nullptr);
+		vkDestroyDescriptorPool(device, descriptorPool, nullptr);
 	});
 }
 
@@ -674,6 +786,8 @@ void VulkanEngine::createPipeline(MaterialInfo matInfo) {
 	VkPipelineLayoutCreateInfo pipelineLayoutInfo = vkinit::pipelineLayoutCreateInfo();
 	pipelineLayoutInfo.pPushConstantRanges = &matInfo.pushConstantRange;
 	pipelineLayoutInfo.pushConstantRangeCount = 1;
+	pipelineLayoutInfo.pSetLayouts = &globalSetLayout;
+	pipelineLayoutInfo.setLayoutCount = 1;
 
 	VkPipelineLayout pipelineLayout;
 	VK_CHECK(vkCreatePipelineLayout(device, &pipelineLayoutInfo, nullptr, &pipelineLayout));
@@ -878,9 +992,18 @@ void VulkanEngine::drawFragmentShader(VkCommandBuffer cmd) {
 
 void VulkanEngine::drawObjects(VkCommandBuffer cmd, RenderObject* first, u32 count)
 {
-	glm::mat4 view = camera.getViewMatrix();
-	glm::mat4 projection = glm::perspective(glm::radians(70.f), 1700.f / 900.f, 0.1f, 200.0f);
-	//projection[1][1] *= -1.0f;
+	FrameData& frame = getCurrentFrame();
+
+	GPUCameraData cameraData;
+	cameraData.view = camera.getViewMatrix();
+	cameraData.projection = glm::perspective(glm::radians(70.f), 1700.f / 900.f, 0.1f, 200.0f);
+	cameraData.viewproj = cameraData.projection * cameraData.view;
+
+	//and copy it to the buffer
+	void* data;
+	vmaMapMemory(allocator, frame.cameraBuffer.allocation, &data);
+		memcpy(data, &cameraData, sizeof(GPUCameraData));
+	vmaUnmapMemory(allocator, frame.cameraBuffer.allocation);
 
 	Mesh* lastMesh = nullptr;
 	Material* lastMaterial = nullptr;
@@ -892,6 +1015,9 @@ void VulkanEngine::drawObjects(VkCommandBuffer cmd, RenderObject* first, u32 cou
 		if (object.material != lastMaterial) {
 			vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, object.material->pipeline);
 			lastMaterial = object.material;
+
+			//bind the descriptor set when changing pipeline
+			vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, object.material->pipelineLayout, 0, 1, &frame.globalDescriptor, 0, nullptr);
 		}
 
 		VkViewport viewport{};
@@ -904,11 +1030,8 @@ void VulkanEngine::drawObjects(VkCommandBuffer cmd, RenderObject* first, u32 cou
 
 		vkCmdSetViewport(cmd, 0, 1, &viewport);
 
-		glm::mat4 model = object.transformMatrix;
-		glm::mat4 meshMatrix = projection * view * model;
-
 		Mat4x4PushConstants constants{};
-		constants.renderMatrix = meshMatrix;
+		constants.renderMatrix = object.transformMatrix;
 
 		vkCmdPushConstants(cmd, object.material->pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(Mat4x4PushConstants), &constants);
 

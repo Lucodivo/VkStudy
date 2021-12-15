@@ -55,6 +55,7 @@ void Camera::turn(f32 yawDelta, f32 pitchDelta) {
 }
 
 void Camera::setForward(glm::vec3 forward) {
+  Assert(forward.length > 0);
   glm::vec3 newForward = glm::normalize(forward);
 
   // invalid forward
