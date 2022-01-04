@@ -4,5 +4,5 @@
 /.vs
 /.github
 /assets
-/third_party
+/third_party/*/
 *.spv
