@@ -187,3 +187,31 @@ VkCommandBufferBeginInfo vkinit::commandBufferBeginInfo(VkCommandBufferUsageFlag
 	cmdBeginInfo.flags = usageFlags;
 	return cmdBeginInfo;
 }
+
+VkDescriptorSetLayoutBinding vkinit::descriptorSetLayoutBinding(VkDescriptorType descriptorType, VkShaderStageFlags pipelineStageFlags, u32 bindingIndex)
+{
+	VkDescriptorSetLayoutBinding setbind = {};
+	setbind.binding = bindingIndex;
+	setbind.descriptorCount = 1;
+	setbind.descriptorType = descriptorType;
+	setbind.pImmutableSamplers = nullptr;
+	setbind.stageFlags = pipelineStageFlags;
+
+	return setbind;
+}
+
+VkWriteDescriptorSet vkinit::writeDescriptorBuffer(VkDescriptorType descriptorType, VkDescriptorSet descriptorSet, VkDescriptorBufferInfo* bufferInfo, u32 bindingIndex)
+{
+	// NOTE: A descriptor set can have multiple bindings. And each binding can be an array of objects.
+	VkWriteDescriptorSet write = {};
+	write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+	write.pNext = nullptr;
+
+	write.dstBinding = bindingIndex; // the binding being updated, as defined from a VkDescriptorSetLayoutBinding
+	write.dstSet = descriptorSet; // descriptor set being written to
+	write.descriptorCount = 1;// # of elements in our array of pImageInfo/pBufferInfo/pTexelBufferView descriptors at the binding point
+	write.descriptorType = descriptorType;
+	write.pBufferInfo = bufferInfo;
+
+	return write;
+}

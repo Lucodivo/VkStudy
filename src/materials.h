@@ -51,6 +51,14 @@ static MaterialInfo materialVertexColor{
 	VK_POLYGON_MODE_FILL
 };
 
+static MaterialInfo materialDefaultLit{
+	"defaultLit",
+	"pnc_color_out_0.vert",
+	"default_lit.frag",
+	mat4x4PushConstantsRange,
+	VK_POLYGON_MODE_FILL
+};
+
 static MaterialInfo materialRedOutline {
 	"redOutline",
 	"position.vert",

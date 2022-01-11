@@ -29,10 +29,22 @@ struct RenderObject {
 	glm::mat4 transformMatrix;
 };
 
+struct GPUObjectData {
+	glm::mat4 modelMatrix;
+};
+
 struct GPUCameraData {
 	glm::mat4 view;
 	glm::mat4 projection;
 	glm::mat4 viewproj;
+};
+
+struct GPUSceneData {
+	glm::vec4 fogColor; // w is for exponent
+	glm::vec4 fogDistances; //x for min, y for max, zw unused.
+	glm::vec4 ambientColor;
+	glm::vec4 sunlightDirection; //w for sun power
+	glm::vec4 sunlightColor;
 };
 
 struct FrameData {
@@ -43,25 +55,7 @@ struct FrameData {
 	VkCommandBuffer mainCommandBuffer;
 
 	AllocatedBuffer cameraBuffer;
-	VkDescriptorSet globalDescriptor;
-};
-
-
-class PipelineBuilder {
-public:
-
-	std::vector<VkPipelineShaderStageCreateInfo> shaderStages;
-	VkPipelineVertexInputStateCreateInfo vertexInputInfo;
-	VkPipelineInputAssemblyStateCreateInfo inputAssembly;
-	VkViewport viewport;
-	VkRect2D scissor;
-	VkPipelineRasterizationStateCreateInfo rasterizer;
-	VkPipelineColorBlendAttachmentState colorBlendAttachment;
-	VkPipelineMultisampleStateCreateInfo multisampling;
-	VkPipelineLayout pipelineLayout;
-	VkPipelineDepthStencilStateCreateInfo depthStencil;
-
-	VkPipeline buildPipeline(VkDevice device, VkRenderPass pass);
+	VkDescriptorSet globalDescriptorSet;
 };
 
 class VulkanEngine {
@@ -124,8 +118,13 @@ public:
 
 	Camera camera;
 
-	VkDescriptorSetLayout globalSetLayout;
+	VkDescriptorSetLayout globalDescSetLayout;
 	VkDescriptorPool descriptorPool;
+
+	VkPhysicalDeviceProperties gpuProperties;
+
+	GPUSceneData sceneParameters;
+	AllocatedBuffer sceneParameterBuffer;
 
 	struct {
 		bool up, down, forward, back, left, right;
@@ -179,4 +178,5 @@ private:
 	FrameData& getCurrentFrame();
 
 	AllocatedBuffer createBuffer(size_t allocSize, VkBufferUsageFlags usage, VmaMemoryUsage memUsage);
+	size_t padUniformBufferSize(size_t originalSize);
 };

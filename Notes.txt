@@ -1,7 +1,25 @@
-TODO:
-- Include support for gltf models
-
 Building:
 When you open as a CMake project with Visual Studio, you must right-click the CMakeLists.txt in the root directory and
 select "CMake Settings for vulkan_guide" and then you must set the "SDL2_dir" to the corresponing directory of SDL2. 
 The root directory, not the include/libs directory inside the SDL2 folder.
+
+Coordinate System:
+- Right-Handed
+- +Z is up
+- Camera's view matrix contains the magic that makes most of the rendering just work
+
+Buffers:
+- Push Constants
+  - Performant
+  - Simple to use 
+    - Does NOT require a Vulkan allocated buffer
+      - Simply pass a pointer to data through vkCmdPushConstants()
+  - Small amount of data (Max size on RTX 3060 is 256 bytes)
+  - When used for a specific pipeline, that pipeline's layout must have declared a compatible push constant range which simply defines shader stage, size, and offset into the push constant.
+  - Data must follow GLSL std430 layout
+- Uniform Buffers
+  - Performant
+  - Buffer bound to a shader through pipelineLayout
+  - Medium amount of data (Max size on RTX 3060 is 65536 bytes)
+- Dynamic Uniform Buffers
+- Storage Buffers

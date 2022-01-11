@@ -9,6 +9,7 @@
 
 #include <vk_types.h>
 #include <vk_initializers.h>
+#include <vk_pipeline_builder.h>
 
 #include "VkBootstrap.h"
 
@@ -292,6 +293,24 @@ AllocatedBuffer VulkanEngine::createBuffer(size_t allocSize, VkBufferUsageFlags 
 	return newBuffer;
 }
 
+size_t VulkanEngine::padUniformBufferSize(size_t originalSize)
+{
+	// Calculate required alignment based on minimum device offset alignment
+	size_t alignment = gpuProperties.limits.minUniformBufferOffsetAlignment;
+	size_t alignedSize = originalSize;
+	if (alignment > 0) {
+		// As the alignment must be a power of 2...
+		// (alignment - 1) creates a mask that is all 1s below the alignment
+		// ~(alignment - 1) creates a mask that is all 1s at and above the alignment
+		alignedSize = (originalSize + (alignment - 1)) & ~(alignment - 1);
+
+		// Note: similar idea as above but less optimized below
+		// size_t alignmentCount = (original + (alignment - 1)) / alignment;
+		// alignedSize = alignmentCount * alignment;
+	}
+	return alignedSize;
+}
+
 void VulkanEngine::run()
 {
 	SDL_Event e;
@@ -461,6 +480,8 @@ void VulkanEngine::initVulkan()
 
 	graphicsQueue = vkbDevice.get_queue(vkb::QueueType::graphics).value();
 	graphicsQueueFamily = vkbDevice.get_queue_index(vkb::QueueType::graphics).value();
+
+	vkGetPhysicalDeviceProperties(chosenGPU, &gpuProperties);
 
 	//initialize the memory allocator
 	VmaAllocatorCreateInfo allocatorInfo = {};
@@ -648,75 +669,93 @@ void VulkanEngine::initSyncStructures()
 
 void VulkanEngine::initDescriptors()
 {
-	// reserve 10 uniform buffer pointers/handles for a maximum of 10 descriptor sets allocated from the pool
-	VkDescriptorPoolSize descriptorPoolSize = { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 10 };
+	// reserve 10 uniform buffer pointers/handles in the descriptor pool
+	VkDescriptorPoolSize descriptorPoolSizes[] = { 
+		{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 10 },
+		{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, 10 }
+	};
 
-	VkDescriptorPoolCreateInfo pool_info = {};
-	pool_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-	pool_info.flags = 0;
-	pool_info.maxSets = 10;
-	pool_info.poolSizeCount = 1;
-	pool_info.pPoolSizes = &descriptorPoolSize;
+	VkDescriptorPoolCreateInfo descriptorPoolInfo = {};
+	descriptorPoolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+	descriptorPoolInfo.flags = 0;
+	// holds the maximum number of descriptor sets
+	descriptorPoolInfo.maxSets = 10;
+	// holds the maximum number of descriptors of each type
+	descriptorPoolInfo.poolSizeCount = ArrayCount(descriptorPoolSizes);
+	descriptorPoolInfo.pPoolSizes = descriptorPoolSizes;
 
-	vkCreateDescriptorPool(device, &pool_info, nullptr, &descriptorPool);
+	vkCreateDescriptorPool(device, &descriptorPoolInfo, nullptr, &descriptorPool);
 
-	VkDescriptorSetLayoutBinding cameraBufferBinding = {};
-	cameraBufferBinding.binding = 0;
-	cameraBufferBinding.descriptorCount = 1;
-	cameraBufferBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-	cameraBufferBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+	VkDescriptorSetLayoutBinding cameraBufferBinding = vkinit::descriptorSetLayoutBinding(
+		VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 
+		VK_SHADER_STAGE_VERTEX_BIT, 
+		0);
+	VkDescriptorSetLayoutBinding sceneBinding = vkinit::descriptorSetLayoutBinding(
+		VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, 
+		VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 
+		1);
 
-	VkDescriptorSetLayoutCreateInfo setInfo = {};
-	setInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-	setInfo.pNext = nullptr;
-	setInfo.bindingCount = 1;
-	setInfo.flags = 0;
-	setInfo.pBindings = &cameraBufferBinding;
+	VkDescriptorSetLayoutBinding bindings[] = { cameraBufferBinding, sceneBinding };
 
-	vkCreateDescriptorSetLayout(device, &setInfo, nullptr, &globalSetLayout);
+	// Collection of bindings within our descriptor set
+	VkDescriptorSetLayoutCreateInfo descSetInfo = {};
+	descSetInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+	descSetInfo.pNext = nullptr;
+	descSetInfo.flags = 0;
+	descSetInfo.bindingCount = ArrayCount(bindings);
+	descSetInfo.pBindings = bindings;
+
+	vkCreateDescriptorSetLayout(device, &descSetInfo, nullptr, &globalDescSetLayout);
 
 	VkDescriptorSetAllocateInfo descriptorSetAllocInfo = {};
 	descriptorSetAllocInfo.pNext = nullptr;
 	descriptorSetAllocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
 	descriptorSetAllocInfo.descriptorPool = descriptorPool;
 	descriptorSetAllocInfo.descriptorSetCount = 1;
-	descriptorSetAllocInfo.pSetLayouts = &globalSetLayout;
+	descriptorSetAllocInfo.pSetLayouts = &globalDescSetLayout;
+
+	size_t paddedGPUSceneDataSize = padUniformBufferSize(sizeof(GPUSceneData));
+	const size_t sceneParamBufferSize = FRAME_OVERLAP * paddedGPUSceneDataSize;
+	sceneParameterBuffer = createBuffer(sceneParamBufferSize, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
 
 	for (u32 i = 0; i < FRAME_OVERLAP; i++)
 	{
 		FrameData& frame = frames[i];
 		frame.cameraBuffer = createBuffer(sizeof(GPUCameraData), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
 
-		vkAllocateDescriptorSets(device, &descriptorSetAllocInfo, &frame.globalDescriptor);
+		vkAllocateDescriptorSets(device, &descriptorSetAllocInfo, &frame.globalDescriptorSet);
 
 		// info about the buffer the descriptor will point at
-		VkDescriptorBufferInfo descBufferInfo;
-		descBufferInfo.buffer = frame.cameraBuffer.buffer;
-		descBufferInfo.offset = 0;
-		descBufferInfo.range = sizeof(GPUCameraData);
+		VkDescriptorBufferInfo cameraDescBufferInfo;
+		cameraDescBufferInfo.buffer = frame.cameraBuffer.buffer;
+		cameraDescBufferInfo.offset = 0;
+		cameraDescBufferInfo.range = sizeof(GPUCameraData);
 
-		VkWriteDescriptorSet setWrite = {};
-		setWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-		setWrite.pNext = nullptr;
-		setWrite.dstSet = frame.globalDescriptor; // descriptor set being written to
-		setWrite.dstBinding = 0; // Binding index being written to (as used in shader files)
-		setWrite.descriptorCount = 1; // # of elements in pImageInfo/pBufferInfo/pTexelBufferView
-		setWrite.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-		setWrite.pBufferInfo = &descBufferInfo;
+		VkDescriptorBufferInfo sceneDescBufferInfo;
+		sceneDescBufferInfo.buffer = sceneParameterBuffer.buffer;
+		sceneDescBufferInfo.offset = 0; // would be (paddedGPUSceneDataSize * i) were we not using dynamic uniform buffers and specifying dynamic offset at bind of descriptor set
+		sceneDescBufferInfo.range = sizeof(GPUSceneData);
+		
+		VkWriteDescriptorSet cameraWrite = vkinit::writeDescriptorBuffer(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, frame.globalDescriptorSet, &cameraDescBufferInfo, 0);
 
-		vkUpdateDescriptorSets(device, 1, &setWrite, 0, nullptr);
+		VkWriteDescriptorSet sceneWrite = vkinit::writeDescriptorBuffer(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, frame.globalDescriptorSet, &sceneDescBufferInfo, 1);
+
+		VkWriteDescriptorSet descSetWrites[] = { cameraWrite, sceneWrite };
+
+		// Note: This function links descriptor sets to the buffers that back their data.
+		vkUpdateDescriptorSets(device, ArrayCount(descSetWrites), descSetWrites, 0, nullptr);
 	}
 
 	mainDeletionQueue.pushFunction([=]() {
 		// freeing descriptor pool frees descriptor layouts
-		vkDestroyDescriptorSetLayout(device, globalSetLayout, nullptr);
+		vkDestroyDescriptorSetLayout(device, globalDescSetLayout, nullptr);
 		vkDestroyDescriptorPool(device, descriptorPool, nullptr);
 	});
 }
 
 void VulkanEngine::initPipelines() {
 	MaterialInfo matInfos[] = {
-		materialVertexColor,
+		materialDefaultLit,
 		materialRed,
 		materialGreen,
 		materialBlue
@@ -786,7 +825,7 @@ void VulkanEngine::createPipeline(MaterialInfo matInfo) {
 	VkPipelineLayoutCreateInfo pipelineLayoutInfo = vkinit::pipelineLayoutCreateInfo();
 	pipelineLayoutInfo.pPushConstantRanges = &matInfo.pushConstantRange;
 	pipelineLayoutInfo.pushConstantRangeCount = 1;
-	pipelineLayoutInfo.pSetLayouts = &globalSetLayout;
+	pipelineLayoutInfo.pSetLayouts = &globalDescSetLayout;
 	pipelineLayoutInfo.setLayoutCount = 1;
 
 	VkPipelineLayout pipelineLayout;
@@ -837,7 +876,7 @@ void VulkanEngine::initScene()
 {
 	RenderObject focusObject;
 	focusObject.mesh = getMesh("mrSaturn");
-	focusObject.material = getMaterial(materialVertexColor.name);
+	focusObject.material = getMaterial(materialDefaultLit.name);
 	glm::mat4 saturnTransform = glm::mat4{ 1.0f };
 	//saturnTransform = glm::rotate(saturnTransform, 90.0f * RadiansPerDegree, glm::vec3(0.f, 0.f, 1.f));
 	//saturnTransform = glm::rotate(saturnTransform, -90.0f * RadiansPerDegree, glm::vec3(0.f, 1.f, 0.f));
@@ -845,7 +884,6 @@ void VulkanEngine::initScene()
 	focusObject.transformMatrix = saturnTransform;
 
 	renderables.push_back(focusObject);
-
 
 	RenderObject environmentObject;
 	environmentObject.mesh = getMesh("cube");
@@ -990,7 +1028,7 @@ void VulkanEngine::drawFragmentShader(VkCommandBuffer cmd) {
 	vkCmdDraw(cmd, 6, 1, 0, 0);
 }
 
-void VulkanEngine::drawObjects(VkCommandBuffer cmd, RenderObject* first, u32 count)
+void VulkanEngine::drawObjects(VkCommandBuffer cmd, RenderObject* firstObject, u32 count)
 {
 	FrameData& frame = getCurrentFrame();
 
@@ -999,25 +1037,40 @@ void VulkanEngine::drawObjects(VkCommandBuffer cmd, RenderObject* first, u32 cou
 	cameraData.projection = glm::perspective(glm::radians(70.f), 1700.f / 900.f, 0.1f, 200.0f);
 	cameraData.viewproj = cameraData.projection * cameraData.view;
 
-	//and copy it to the buffer
+	// copy data to camera buffer
 	void* data;
 	vmaMapMemory(allocator, frame.cameraBuffer.allocation, &data);
 		memcpy(data, &cameraData, sizeof(GPUCameraData));
 	vmaUnmapMemory(allocator, frame.cameraBuffer.allocation);
 
+	float magicNum = (frameNumber / 120.f);
+	sceneParameters.ambientColor = { sin(magicNum), 0, cos(magicNum), 1 };
+
+	// copy data to scene buffer
+	char* sceneData;
+	vmaMapMemory(allocator, sceneParameterBuffer.allocation, (void**)&sceneData);
+		int frameIndex = frameNumber % FRAME_OVERLAP;
+		sceneData += padUniformBufferSize(sizeof(GPUSceneData)) * frameIndex;
+		memcpy(sceneData, &sceneParameters, sizeof(GPUSceneData));
+	vmaUnmapMemory(allocator, sceneParameterBuffer.allocation);
+
 	Mesh* lastMesh = nullptr;
 	Material* lastMaterial = nullptr;
 	for (u32 i = 0; i < count; i++)
 	{
-		RenderObject& object = first[i];
+		RenderObject& object = firstObject[i];
 
 		//only bind the pipeline if it doesn't match with the already bound one
 		if (object.material != lastMaterial) {
 			vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, object.material->pipeline);
 			lastMaterial = object.material;
 
-			//bind the descriptor set when changing pipeline
-			vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, object.material->pipelineLayout, 0, 1, &frame.globalDescriptor, 0, nullptr);
+			u32 sceneDynamicUniformOffset = padUniformBufferSize(sizeof(GPUSceneData)) * frameIndex;
+
+			// vkCmdBindDescriptorSets causes the sets numbered [firstSet, firstSet+descriptorSetCount-1] to use the binding information stored in pDescriptorSets[0..descriptorSetCount-1]
+			// dynamic uniform offsets must be provided for every dynamic uniform buffer descriptor in the descriptor set(s)
+			// the dynamic offsets are ordered based firstly on the order of the descriptor set array and then on their binding index within that descriptor set
+			vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, object.material->pipelineLayout, 0 /*first set*/, 1 /*set count*/, &frame.globalDescriptorSet, 1, &sceneDynamicUniformOffset);
 		}
 
 		VkViewport viewport{};
@@ -1067,6 +1120,7 @@ void VulkanEngine::loadShaderModule(std::string filePath, VkShaderModule* outSha
 	filePath = SHADER_DIR + filePath + ".spv";
 	std::ifstream file(filePath.c_str(), std::ios::ate | std::ios::binary);
 
+	Assert(file.is_open());
 	if (!file.is_open()) {
 		std::cout << "Could not open shader file: " << filePath << std::endl;
 	}
@@ -1096,57 +1150,4 @@ void VulkanEngine::loadShaderModule(std::string filePath, VkShaderModule* outSha
 
 	std::cout << "Successfully created shader: " << filePath << std::endl;
 	*outShaderModule = shaderModule;
-}
-
-VkPipeline PipelineBuilder::buildPipeline(VkDevice device, VkRenderPass pass) {
-	VkPipelineViewportStateCreateInfo viewportState = {};
-	viewportState.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
-	viewportState.pNext = nullptr;
-	viewportState.viewportCount = 1;
-	viewportState.pViewports = &viewport;
-	viewportState.scissorCount = 1;
-	viewportState.pScissors = &scissor;
-
-	VkPipelineColorBlendStateCreateInfo colorBlending = {};
-	colorBlending.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
-	colorBlending.pNext = nullptr;
-	colorBlending.logicOpEnable = VK_FALSE;
-	colorBlending.logicOp = VK_LOGIC_OP_COPY;
-	colorBlending.attachmentCount = 1;
-	colorBlending.pAttachments = &colorBlendAttachment;
-
-	VkPipelineDynamicStateCreateInfo dynamicStateCreateInfo = {};
-	VkDynamicState negativeViewPortDynamicState = VK_DYNAMIC_STATE_VIEWPORT;
-	dynamicStateCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
-	dynamicStateCreateInfo.pNext = nullptr;
-	dynamicStateCreateInfo.pDynamicStates = &negativeViewPortDynamicState;
-	dynamicStateCreateInfo.dynamicStateCount = 1;
-	dynamicStateCreateInfo.flags = 0;
-
-	VkGraphicsPipelineCreateInfo pipelineInfo = {};
-	pipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
-	pipelineInfo.pNext = nullptr;
-	pipelineInfo.stageCount = shaderStages.size();
-	pipelineInfo.pStages = shaderStages.data();
-	pipelineInfo.pVertexInputState = &vertexInputInfo;
-	pipelineInfo.pInputAssemblyState = &inputAssembly;
-	pipelineInfo.pViewportState = &viewportState;
-	pipelineInfo.pRasterizationState = &rasterizer;
-	pipelineInfo.pMultisampleState = &multisampling;
-	pipelineInfo.pColorBlendState = &colorBlending;
-	pipelineInfo.pDepthStencilState = &depthStencil;
-	pipelineInfo.layout = pipelineLayout;
-	pipelineInfo.renderPass = pass;
-	pipelineInfo.subpass = 0;
-	pipelineInfo.basePipelineHandle = VK_NULL_HANDLE;
-	pipelineInfo.pDynamicState = &dynamicStateCreateInfo;
-
-	//it's easy to error out on create graphics pipeline, so we handle it a bit better than the common VK_CHECK case
-	VkPipeline newPipeline;
-	if (vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &newPipeline) != VK_SUCCESS) {
-		std::cout << "failed to create pipeline\n";
-		return VK_NULL_HANDLE; // failed to create graphics pipeline
-	}
-
-	return newPipeline;
 }
