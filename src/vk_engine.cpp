@@ -887,22 +887,29 @@ void VulkanEngine::initScene()
 
 	RenderObject environmentObject;
 	environmentObject.mesh = getMesh("cube");
-	glm::mat4 scale = glm::scale(glm::mat4{ 1.0 }, glm::vec3(0.2, 0.2, 0.2));
-	glm::mat4 translationX = glm::translate(glm::mat4{ 1.0 }, glm::vec3(10.0f, 0.0f, 0.0f));
-	glm::mat4 translationY = glm::translate(glm::mat4{ 1.0 }, glm::vec3(0.0f, 10.0f, 0.0f));
-	glm::mat4 translationZ = glm::translate(glm::mat4{ 1.0 }, glm::vec3(0.0f, 0.0f, 10.0f));
-
-	environmentObject.transformMatrix = translationX * scale;
-	environmentObject.material = getMaterial(materialRed.name);
-	renderables.push_back(environmentObject);
-
-	environmentObject.transformMatrix = translationY * scale;
 	environmentObject.material = getMaterial(materialGreen.name);
-	renderables.push_back(environmentObject);
-
-	environmentObject.transformMatrix = translationZ * scale;
+	f32 scale = 0.2f;
+	glm::mat4 scaleMat = glm::scale(glm::mat4{ 1.0 }, glm::vec3(scale, scale, scale));
+	for (s32 x = -16; x <= 16; ++x)
+	for (s32 y = -16; y <= 16; ++y) {
+		glm::mat4 translationMat = glm::translate(glm::mat4{ 1.0 }, glm::vec3(f32(x), f32(y), -scale));
+		environmentObject.transformMatrix = translationMat * scaleMat;
+		renderables.push_back(environmentObject);
+	}
 	environmentObject.material = getMaterial(materialBlue.name);
-	renderables.push_back(environmentObject);
+	for (s32 x = -16; x <= 16; ++x)
+	for (s32 z = 1; z <= 32; ++z) {
+		glm::mat4 translationMat = glm::translate(glm::mat4{ 1.0 }, glm::vec3(f32(x), 16.0f, f32(z) - scale));
+		environmentObject.transformMatrix = translationMat * scaleMat;
+		renderables.push_back(environmentObject);
+	}
+	environmentObject.material = getMaterial(materialRed.name);
+	for (s32 y = -16; y <= 16; ++y)
+	for (s32 z = 1; z <= 32; ++z) {
+		glm::mat4 translationMat = glm::translate(glm::mat4{ 1.0 }, glm::vec3(-16.0f, f32(y), f32(z) - scale));
+		environmentObject.transformMatrix = translationMat * scaleMat;
+		renderables.push_back(environmentObject);
+	}
 
 	// TODO: sort objects by material to minimize binding pipelines
 	//std::sort(renderables.begin(), renderables.end(), [](const RenderObject& a, const RenderObject& b) {
