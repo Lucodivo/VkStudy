@@ -9,13 +9,13 @@
 #include "types.h"
 
 struct AllocatedBuffer {
-    VkBuffer buffer;
-    VmaAllocation allocation;
+    VkBuffer vkBuffer;
+    VmaAllocation vmaAllocation;
 };
 
 struct AllocatedImage {
-  VkImage image;
-  VmaAllocation allocation;
+  VkImage vkImage;
+  VmaAllocation vmaAllocation;
 };
 
 struct DeletionQueue

@@ -54,10 +54,6 @@ struct FrameData {
 	VkCommandPool commandPool;
 	VkCommandBuffer mainCommandBuffer;
 
-	// uniform buffer
-	AllocatedBuffer cameraBuffer;
-	VkDescriptorSet globalDescriptorSet;
-
 	// shader storage buffer
 	AllocatedBuffer objectBuffer;
 	VkDescriptorSet objectDescriptorSet;
@@ -90,7 +86,7 @@ public:
 	VkPhysicalDevice chosenGPU; // GPU chosen as the default device
 	VkDevice device; // Vulkan device for commands
 	VkSurfaceKHR surface; // Vulkan window surface
-
+	VkPhysicalDeviceProperties gpuProperties;
 	VkSwapchainKHR swapchain;
 	VkFormat swapchainImageFormat;
 	std::vector<VkImage> swapchainImages;
@@ -127,12 +123,13 @@ public:
 	VkDescriptorSetLayout objectDescSetLayout;
 	VkDescriptorPool descriptorPool;
 
-	VkPhysicalDeviceProperties gpuProperties;
-
-	GPUSceneData sceneParameters;
-
+	VkDescriptorSet globalDescriptorSet;
 	// a single dynamic uniform buffer used for all frames
-	AllocatedBuffer sceneParameterBuffer;
+	struct {
+		AllocatedBuffer buffer;
+		u32 sceneOffset;
+		u32 cameraOffset;
+	} globalBuffer;
 
 	struct {
 		bool up, down, forward, back, left, right;

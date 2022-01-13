@@ -284,12 +284,12 @@ AllocatedBuffer VulkanEngine::createBuffer(size_t allocSize, VkBufferUsageFlags 
 
 	//allocate the buffer
 	VK_CHECK(vmaCreateBuffer(allocator, &bufferInfo, &vmaallocInfo,
-		&newBuffer.buffer,
-		&newBuffer.allocation,
+		&newBuffer.vkBuffer,
+		&newBuffer.vmaAllocation,
 		nullptr));
 
 	mainDeletionQueue.pushFunction([=]() {
-		vmaDestroyBuffer(allocator, newBuffer.buffer, newBuffer.allocation);
+		vmaDestroyBuffer(allocator, newBuffer.vkBuffer, newBuffer.vmaAllocation);
 		});
 
 	return newBuffer;
@@ -526,16 +526,16 @@ void VulkanEngine::initSwapchain()
 	VmaAllocationCreateInfo depthImageAllocInfo = {};
 	depthImageAllocInfo.usage = VMA_MEMORY_USAGE_GPU_ONLY; // Requst it to be on GPU
 	depthImageAllocInfo.requiredFlags = VkMemoryPropertyFlags(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT); // Require it to be on GPU
-	vmaCreateImage(allocator, &depthImageInfo, &depthImageAllocInfo, &depthImage.image, &depthImage.allocation, nullptr);
+	vmaCreateImage(allocator, &depthImageInfo, &depthImageAllocInfo, &depthImage.vkImage, &depthImage.vmaAllocation, nullptr);
 
 	// build an image-view for the depth image to use in framebuffers for rendering
-	VkImageViewCreateInfo depthImageViewInfo = vkinit::imageViewCreateInfo(depthFormat, depthImage.image, VK_IMAGE_ASPECT_DEPTH_BIT);
+	VkImageViewCreateInfo depthImageViewInfo = vkinit::imageViewCreateInfo(depthFormat, depthImage.vkImage, VK_IMAGE_ASPECT_DEPTH_BIT);
 
 	VK_CHECK(vkCreateImageView(device, &depthImageViewInfo, nullptr, &depthImageView));
 
 	mainDeletionQueue.pushFunction([=]() {
 		vkDestroyImageView(device, depthImageView, nullptr);
-		vmaDestroyImage(allocator, depthImage.image, depthImage.allocation);
+		vmaDestroyImage(allocator, depthImage.vkImage, depthImage.vmaAllocation);
 		u32 swapchainImageCount = swapchainImageViews.size();
 		for (u32 i = 0; i < swapchainImageCount; i++) {
 			vkDestroyImageView(device, swapchainImageViews[i], nullptr);
@@ -691,7 +691,7 @@ void VulkanEngine::initDescriptors()
 
 	// global descriptor set
 	VkDescriptorSetLayoutBinding cameraBufferBinding = vkinit::descriptorSetLayoutBinding(
-		VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+		VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC,
 		VK_SHADER_STAGE_VERTEX_BIT,
 		0);
 	VkDescriptorSetLayoutBinding sceneBinding = vkinit::descriptorSetLayoutBinding(
@@ -739,45 +739,50 @@ void VulkanEngine::initDescriptors()
 	objectDescSetAllocInfo.descriptorSetCount = 1;
 	objectDescSetAllocInfo.pSetLayouts = &objectDescSetLayout;
 
+	size_t paddedGPUCameraDataSize = padUniformBufferSize(sizeof(GPUCameraData));
 	size_t paddedGPUSceneDataSize = padUniformBufferSize(sizeof(GPUSceneData));
-	const size_t sceneParamBufferSize = FRAME_OVERLAP * paddedGPUSceneDataSize;
-	sceneParameterBuffer = createBuffer(sceneParamBufferSize, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
+	u32 globalBufferSize = FRAME_OVERLAP * (paddedGPUCameraDataSize + paddedGPUSceneDataSize);
+	globalBuffer.cameraOffset = 0;
+	globalBuffer.sceneOffset = FRAME_OVERLAP * paddedGPUCameraDataSize;
+	globalBuffer.buffer = createBuffer(globalBufferSize, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
+	vkAllocateDescriptorSets(device, &globalDescSetAllocInfo, &globalDescriptorSet);
+
+	// info about the buffer the descriptor will point at
+	VkDescriptorBufferInfo cameraDescBufferInfo;
+	cameraDescBufferInfo.buffer = globalBuffer.buffer.vkBuffer;
+	cameraDescBufferInfo.offset = globalBuffer.cameraOffset;
+	cameraDescBufferInfo.range = sizeof(GPUCameraData);
+
+	VkDescriptorBufferInfo sceneDescBufferInfo;
+	sceneDescBufferInfo.buffer = globalBuffer.buffer.vkBuffer;
+	sceneDescBufferInfo.offset = globalBuffer.sceneOffset; // NOTE: This is not going to work due to alignment
+	sceneDescBufferInfo.range = sizeof(GPUSceneData);
+
+	VkWriteDescriptorSet cameraWrite = vkinit::writeDescriptorBuffer(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, globalDescriptorSet, &cameraDescBufferInfo, 0);
+	VkWriteDescriptorSet sceneWrite = vkinit::writeDescriptorBuffer(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, globalDescriptorSet, &sceneDescBufferInfo, 1);
+	VkWriteDescriptorSet descSetWrites[] = { cameraWrite, sceneWrite };
+
+	// Note: This function links descriptor sets to the buffers that back their data.
+	vkUpdateDescriptorSets(device, ArrayCount(descSetWrites), descSetWrites, 0/*descriptorCopyCount*/, nullptr/*pDescriptorCopies*/);
 
 	const size_t objectBufferSize = sizeof(GPUObjectData) * MAX_OBJECTS;
 
 	for (u32 i = 0; i < FRAME_OVERLAP; i++)
 	{
 		FrameData& frame = frames[i];
-		frame.cameraBuffer = createBuffer(sizeof(GPUCameraData), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
-		frame.objectBuffer = createBuffer(objectBufferSize, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
 
-		vkAllocateDescriptorSets(device, &globalDescSetAllocInfo, &frame.globalDescriptorSet);
+		frame.objectBuffer = createBuffer(objectBufferSize, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
 		vkAllocateDescriptorSets(device, &objectDescSetAllocInfo, &frame.objectDescriptorSet);
 
-		// info about the buffer the descriptor will point at
-		VkDescriptorBufferInfo cameraDescBufferInfo;
-		cameraDescBufferInfo.buffer = frame.cameraBuffer.buffer;
-		cameraDescBufferInfo.offset = 0;
-		cameraDescBufferInfo.range = sizeof(GPUCameraData);
-
-		VkDescriptorBufferInfo sceneDescBufferInfo;
-		sceneDescBufferInfo.buffer = sceneParameterBuffer.buffer;
-		sceneDescBufferInfo.offset = 0; // would be (paddedGPUSceneDataSize * i) were we not using dynamic uniform buffers and specifying dynamic offset at bind of descriptor set
-		sceneDescBufferInfo.range = sizeof(GPUSceneData);
-
 		VkDescriptorBufferInfo objectDescBufferInfo;
-		objectDescBufferInfo.buffer = frame.objectBuffer.buffer;
+		objectDescBufferInfo.buffer = frame.objectBuffer.vkBuffer;
 		objectDescBufferInfo.offset = 0;
 		objectDescBufferInfo.range = objectBufferSize;
-		
-		VkWriteDescriptorSet cameraWrite = vkinit::writeDescriptorBuffer(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, frame.globalDescriptorSet, &cameraDescBufferInfo, 0);
-		VkWriteDescriptorSet sceneWrite = vkinit::writeDescriptorBuffer(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, frame.globalDescriptorSet, &sceneDescBufferInfo, 1);
 
 		VkWriteDescriptorSet objectWrite = vkinit::writeDescriptorBuffer(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, frame.objectDescriptorSet, &objectDescBufferInfo, 0);
 
-		VkWriteDescriptorSet descSetWrites[] = { cameraWrite, sceneWrite, objectWrite };
+		VkWriteDescriptorSet descSetWrites[] = { objectWrite };
 
-		// Note: This function links descriptor sets to the buffers that back their data.
 		vkUpdateDescriptorSets(device, ArrayCount(descSetWrites), descSetWrites, 0/*descriptorCopyCount*/, nullptr/*pDescriptorCopies*/);
 	}
 
@@ -1004,18 +1009,18 @@ void VulkanEngine::uploadMesh(Mesh& mesh)
 	vmaallocInfo.usage = VMA_MEMORY_USAGE_CPU_TO_GPU;
 
 	VK_CHECK(vmaCreateBuffer(allocator, &bufferInfo, &vmaallocInfo,
-		&mesh.vertexBuffer.buffer,
-		&mesh.vertexBuffer.allocation,
+		&mesh.vertexBuffer.vkBuffer,
+		&mesh.vertexBuffer.vmaAllocation,
 		nullptr));
 
 	mainDeletionQueue.pushFunction([=]() {
-		vmaDestroyBuffer(allocator, mesh.vertexBuffer.buffer, mesh.vertexBuffer.allocation);
+		vmaDestroyBuffer(allocator, mesh.vertexBuffer.vkBuffer, mesh.vertexBuffer.vmaAllocation);
 	});
 
 	void* data;
-	vmaMapMemory(allocator, mesh.vertexBuffer.allocation, &data);
+	vmaMapMemory(allocator, mesh.vertexBuffer.vmaAllocation, &data);
 		memcpy(data, mesh.vertices.data(), mesh.vertices.size() * sizeof(Vertex));
-	vmaUnmapMemory(allocator, mesh.vertexBuffer.allocation);
+	vmaUnmapMemory(allocator, mesh.vertexBuffer.vmaAllocation);
 }
 
 Material* VulkanEngine::createMaterial(VkPipeline pipeline, VkPipelineLayout layout, const std::string& name)
@@ -1076,37 +1081,43 @@ void VulkanEngine::drawObjects(VkCommandBuffer cmd, RenderObject* firstObject, u
 {
 	FrameData& frame = getCurrentFrame();
 
+	// camera data
 	GPUCameraData cameraData;
 	cameraData.view = camera.getViewMatrix();
 	cameraData.projection = glm::perspective(glm::radians(70.f), 1700.f / 900.f, 0.1f, 200.0f);
 	cameraData.viewproj = cameraData.projection * cameraData.view;
-
-	// copy data to camera buffer
-	void* data;
-	vmaMapMemory(allocator, frame.cameraBuffer.allocation, &data);
-		memcpy(data, &cameraData, sizeof(GPUCameraData));
-	vmaUnmapMemory(allocator, frame.cameraBuffer.allocation);
-
+	// scene data
+	GPUSceneData sceneData;
 	float magicNum = (frameNumber / 120.f);
-	sceneParameters.ambientColor = { sin(magicNum), 0, cos(magicNum), 1 };
+	sceneData.ambientColor = { sin(magicNum), 0, cos(magicNum), 1 };
 
 	// copy data to scene buffer
-	char* sceneData;
-	vmaMapMemory(allocator, sceneParameterBuffer.allocation, (void**)&sceneData);
+	char* globalDataBufferPtr;
+	vmaMapMemory(allocator, globalBuffer.buffer.vmaAllocation, (void**)&globalDataBufferPtr);
 		int frameIndex = frameNumber % FRAME_OVERLAP;
-		sceneData += padUniformBufferSize(sizeof(GPUSceneData)) * frameIndex;
-		memcpy(sceneData, &sceneParameters, sizeof(GPUSceneData));
-	vmaUnmapMemory(allocator, sceneParameterBuffer.allocation);
+		// copy camera data
+		char* cameraPtr = (globalDataBufferPtr + globalBuffer.cameraOffset);
+		u32 cameraDataOffset = padUniformBufferSize(sizeof(GPUCameraData)) * frameIndex;
+		cameraPtr += cameraDataOffset;
+		memcpy(cameraPtr, &cameraData, sizeof(GPUCameraData));
+		// copy scene data
+		char* scenePtr = (globalDataBufferPtr + globalBuffer.sceneOffset);
+		u32 sceneDataOffset = padUniformBufferSize(sizeof(GPUSceneData)) * frameIndex;
+		scenePtr += sceneDataOffset;
+		memcpy(scenePtr, &sceneData, sizeof(GPUSceneData));
+		globalDataBufferPtr = nullptr, cameraPtr = nullptr, scenePtr = nullptr;
+	vmaUnmapMemory(allocator, globalBuffer.buffer.vmaAllocation);
 
 	// copy data to object buffer
 	GPUObjectData* objectData;
-	vmaMapMemory(allocator, frame.objectBuffer.allocation, (void**)&objectData);
-	// Note: if my data was organized differently, possibly SoA or AoSoA, I could use memcpy for large chunks of data instead of iterating through a loop
-	for (u32 i = 0; i < count; i++) {
-		RenderObject& object = firstObject[i];
-		objectData[i].modelMatrix = object.modelMatrix;
-	}
-	vmaUnmapMemory(allocator, frame.objectBuffer.allocation);
+	vmaMapMemory(allocator, frame.objectBuffer.vmaAllocation, (void**)&objectData);
+		// Note: if my data was organized differently, possibly SoA or AoSoA instead of simply AoS, I could use memcpy for large chunks of data instead of iterating through a loop
+		for (u32 i = 0; i < count; i++) {
+			RenderObject& object = firstObject[i];
+			objectData[i].modelMatrix = object.modelMatrix;
+		}
+		objectData = nullptr;
+	vmaUnmapMemory(allocator, frame.objectBuffer.vmaAllocation);
 
 	Mesh* lastMesh = nullptr;
 	Material* lastMaterial = nullptr;
@@ -1121,14 +1132,14 @@ void VulkanEngine::drawObjects(VkCommandBuffer cmd, RenderObject* firstObject, u
 
 			// Note: It is only necessary to rebind descriptor sets if the desciptor layouts change between pipelines
 			// Or if the dynamic uniform buffer offset needs to be updated
-			u32 sceneDynamicUniformOffset = padUniformBufferSize(sizeof(GPUSceneData)) * frameIndex;
+			u32 dynamicUniformOffsets[] = { cameraDataOffset, sceneDataOffset };
 
-			VkDescriptorSet descSets[] = { frame.globalDescriptorSet, frame.objectDescriptorSet };
+			VkDescriptorSet descSets[] = { globalDescriptorSet, frame.objectDescriptorSet };
 
 			// vkCmdBindDescriptorSets causes the sets numbered [firstSet, firstSet+descriptorSetCount-1] to use the binding information stored in pDescriptorSets[0..descriptorSetCount-1]
 			// dynamic uniform offsets must be provided for every dynamic uniform buffer descriptor in the descriptor set(s)
 			// the dynamic offsets are ordered based firstly on the order of the descriptor set array and then on their binding index within that descriptor set
-			vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, object.material->pipelineLayout, 0 /*first set*/, ArrayCount(descSets), descSets, 1, &sceneDynamicUniformOffset);
+			vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, object.material->pipelineLayout, 0 /*first set*/, ArrayCount(descSets), descSets, ArrayCount(dynamicUniformOffsets), dynamicUniformOffsets);
 		}
 
 		VkViewport viewport{};
@@ -1150,7 +1161,7 @@ void VulkanEngine::drawObjects(VkCommandBuffer cmd, RenderObject* firstObject, u
 		if (object.mesh != lastMesh) {
 			//bind the mesh vertex buffer with offset 0
 			VkDeviceSize offset = 0;
-			vkCmdBindVertexBuffers(cmd, 0, 1, &object.mesh->vertexBuffer.buffer, &offset);
+			vkCmdBindVertexBuffers(cmd, 0, 1, &object.mesh->vertexBuffer.vkBuffer, &offset);
 			lastMesh = object.mesh;
 		}
 

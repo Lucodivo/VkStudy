@@ -265,17 +265,17 @@ void Mesh::uploadMesh(VmaAllocator allocator, DeletionQueue* deletionQueue)
 	vmaallocInfo.usage = VMA_MEMORY_USAGE_CPU_TO_GPU;
 
 	VK_CHECK(vmaCreateBuffer(allocator, &bufferInfo, &vmaallocInfo,
-		&vertexBuffer.buffer,
-		&vertexBuffer.allocation,
+		&vertexBuffer.vkBuffer,
+		&vertexBuffer.vmaAllocation,
 		nullptr));
 
 	void* data;
-	vmaMapMemory(allocator, vertexBuffer.allocation, &data);
+	vmaMapMemory(allocator, vertexBuffer.vmaAllocation, &data);
 		memcpy(data, vertices.data(), vertices.size() * sizeof(Vertex));
-	vmaUnmapMemory(allocator, vertexBuffer.allocation);
+	vmaUnmapMemory(allocator, vertexBuffer.vmaAllocation);
 
 	AllocatedBuffer localVertBuffer = this->vertexBuffer; // necessary to capture member variable by value if not using C++ 14
 	deletionQueue->pushFunction([=]() {
-		vmaDestroyBuffer(allocator, localVertBuffer.buffer, localVertBuffer.allocation);
+		vmaDestroyBuffer(allocator, localVertBuffer.vkBuffer, localVertBuffer.vmaAllocation);
 	});
 }
