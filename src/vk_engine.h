@@ -26,7 +26,7 @@ struct Material {
 struct RenderObject {
 	Mesh* mesh;
 	Material* material;
-	glm::mat4 transformMatrix;
+	glm::mat4 modelMatrix;
 };
 
 struct GPUObjectData {
@@ -54,8 +54,13 @@ struct FrameData {
 	VkCommandPool commandPool;
 	VkCommandBuffer mainCommandBuffer;
 
+	// uniform buffer
 	AllocatedBuffer cameraBuffer;
 	VkDescriptorSet globalDescriptorSet;
+
+	// shader storage buffer
+	AllocatedBuffer objectBuffer;
+	VkDescriptorSet objectDescriptorSet;
 };
 
 class VulkanEngine {
@@ -119,11 +124,14 @@ public:
 	Camera camera;
 
 	VkDescriptorSetLayout globalDescSetLayout;
+	VkDescriptorSetLayout objectDescSetLayout;
 	VkDescriptorPool descriptorPool;
 
 	VkPhysicalDeviceProperties gpuProperties;
 
 	GPUSceneData sceneParameters;
+
+	// a single dynamic uniform buffer used for all frames
 	AllocatedBuffer sceneParameterBuffer;
 
 	struct {

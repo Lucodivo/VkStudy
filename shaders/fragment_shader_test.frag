@@ -36,10 +36,13 @@ void main()
     
     vec2 hexUV = dot(a,a) < dot(b,b) ? a : b;
     vec2 hexOffset = uv - hexUV; // uv rather then scaled UV for aesthetic reasons only
-    float breath = (-cos(pc.time * 0.1) + 1.0) * 0.5 * 40.0; // "breath" that goes from 0 to 40 using -cos
+    float breath = (-cos(pc.time * 0.01) + 1.0) * 0.5 * 40.0; // "breath" that goes from 0 to 40 using -cos
     
-    float on = 1.0 - step(cos(breath * hexOffset.x * hexOffset.y), HexDist(hexUV));
-    vec3 color = colors[1] * on;
+    float on = step(cos(breath * hexOffset.x * hexOffset.y), HexDist(hexUV));
+    float off = 1.0 - on;
+    vec3 onColor = vec3(0.5, 0.0, 0.0) * on; // background
+    vec3 offColor = vec3(0.0, 0.0, 0.0) * off; // hex color
+    vec3 color = onColor + offColor;
 
     // Output to screen
     fragColor = vec4(color, 1.0);
