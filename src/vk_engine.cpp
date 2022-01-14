@@ -1,6 +1,8 @@
 
 #include "vk_engine.h"
 
+#include "util.h"
+
 #include <iostream>
 #include <fstream>
 
@@ -188,7 +190,6 @@ void VulkanEngine::processInput() {
 }
 
 void VulkanEngine::updateWorld() {
-	local_access bool imguiOpen = true;
 	local_access f32 moveSpeed = 0.2f;
 	local_access f32 turnSpeed = 0.5f;
 	local_access bool editMode = true; // NOTE: We assume bool initialized as false
@@ -251,12 +252,8 @@ void VulkanEngine::updateWorld() {
 		input.mouseDeltaY = 0.0f;
 	}
 
-	ImGui::Begin("Variable Adjustments", &imguiOpen, 0);
-	{
-		ImGui::SliderFloat("move speed", &moveSpeed, 0.1f, 1.0f, "%.2f");
-		ImGui::SliderFloat("turn speed", &turnSpeed, 0.1f, 1.0f, "%.2f");
-	}
-	ImGui::End();
+	ImGui::SliderFloat("move speed", &moveSpeed, 0.1f, 1.0f, "%.2f");
+	ImGui::SliderFloat("turn speed", &turnSpeed, 0.1f, 1.0f, "%.2f");
 
 	camera.move(cameraDelta * (invSqrt[invSqrtIndex] * moveSpeed));
 }
@@ -1095,6 +1092,8 @@ void VulkanEngine::drawObjects(VkCommandBuffer cmd, RenderObject* firstObject, u
 	vmaUnmapMemory(allocator, globalBuffer.buffer.vmaAllocation);
 
 	// copy data to object buffer
+	local_access Timer ssboUploadTimer;
+	StartTimer(ssboUploadTimer);
 	GPUObjectData* objectData;
 	vmaMapMemory(allocator, frame.objectBuffer.vmaAllocation, (void**)&objectData);
 		// Note: if my data was organized differently, possibly SoA or AoSoA instead of simply AoS, I could use memcpy for large chunks of data instead of iterating through a loop
@@ -1105,6 +1104,8 @@ void VulkanEngine::drawObjects(VkCommandBuffer cmd, RenderObject* firstObject, u
 		}
 		objectData = nullptr;
 	vmaUnmapMemory(allocator, frame.objectBuffer.vmaAllocation);
+	f64 ssboUploadTimeMs = StopTimer(ssboUploadTimer);
+	ImGui::Text("Uploading SSBO data: %5.5f ms", ssboUploadTimeMs);
 
 	Mesh* lastMesh = nullptr;
 	Material* lastMaterial = nullptr;
@@ -1127,37 +1128,36 @@ void VulkanEngine::drawObjects(VkCommandBuffer cmd, RenderObject* firstObject, u
 			// dynamic uniform offsets must be provided for every dynamic uniform buffer descriptor in the descriptor set(s)
 			// the dynamic offsets are ordered based firstly on the order of the descriptor set array and then on their binding index within that descriptor set
 			vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, object.material->pipelineLayout, 0 /*first set*/, ArrayCount(descSets), descSets, ArrayCount(dynamicUniformOffsets), dynamicUniformOffsets);
-		}
 
-		VkViewport viewport{};
-		viewport.x = 0;
-		viewport.y = (f32)windowExtent.height;
-		viewport.width = (f32)windowExtent.width;
-		viewport.height = -viewport.y;
-		viewport.minDepth = 0.0f;
-		viewport.maxDepth = 1.0f;
-
-		vkCmdSetViewport(cmd, 0, 1, &viewport);
-
-		//only bind the mesh if it's a different one from last bind
-		if (object.mesh != lastMesh) {
 			//bind the mesh vertex buffer with offset 0
 			VkDeviceSize offset = 0;
 			vkCmdBindVertexBuffers(cmd, 0, 1, &object.mesh->vertexBuffer.vkBuffer, &offset);
 			lastMesh = object.mesh;
 		}
 
-		vkCmdDraw(cmd, object.mesh->vertices.size(), 1, 0, i);
-	}
+	f64 objectCmdBufferFillMs = StopTimer(objectCmdBufferFillTimer);
+	ImGui::Text("Filling command buffer for object draws: %5.5f ms", objectCmdBufferFillMs);
 }
 
 void VulkanEngine::startImguiFrame() {
 	ImGui_ImplVulkan_NewFrame();
 	ImGui_ImplSDL2_NewFrame(window);
 	ImGui::NewFrame();
+
+	// start rendering debug imgui
+	local_access bool imguiOpen = true;
+	ImGui::Begin("Debug Etc.", &imguiOpen, 0);
+	local_access Timer frameTimer;
+	f64 frameTimeMs = StopTimer(frameTimer); // for last frame
+	f64 frameFPS = 1000.0 / frameTimeMs;
+	ImGui::Text("Frame time: %5.5f ms, %5.5f FPS", frameTimeMs, frameFPS);
+	StartTimer(frameTimer); // for current frame
 }
 
 void VulkanEngine::renderImgui(VkCommandBuffer cmd) {
+	// end rendering debug imgui window
+	ImGui::End();
+
 	// Rendering
 	ImGui::Render();
 
