@@ -21,7 +21,7 @@
 
 #define PRESENT_MODE VK_PRESENT_MODE_FIFO_KHR
 
-#define MAX_OBJECTS 10'000
+#define MAX_OBJECTS 100'000
 
 const VkClearValue colorClearValue{
 	{ 0.1f, 0.1f, 0.1f, 1.0f }
@@ -797,9 +797,7 @@ void VulkanEngine::initDescriptors()
 void VulkanEngine::initPipelines() {
 	MaterialInfo matInfos[] = {
 		materialDefaultLit,
-		materialRed,
-		materialGreen,
-		materialBlue
+		materialDefaulColor
 	};
 
 	createFragmentShaderPipeline("fragment_shader_test.frag");
@@ -864,8 +862,8 @@ void VulkanEngine::createPipeline(MaterialInfo matInfo) {
 	// TODO: Reuse of pipeline layouts will allows for push constants to be used for several pipelines
 	// build mesh pipeline layout
 	VkPipelineLayoutCreateInfo pipelineLayoutInfo = vkinit::pipelineLayoutCreateInfo();
-	pipelineLayoutInfo.pPushConstantRanges = &matInfo.pushConstantRange;
-	pipelineLayoutInfo.pushConstantRangeCount = 1;
+	pipelineLayoutInfo.pushConstantRangeCount = 0;
+	pipelineLayoutInfo.pPushConstantRanges = nullptr;
 	VkDescriptorSetLayout descSets[] = { globalDescSetLayout, objectDescSetLayout };
 	pipelineLayoutInfo.setLayoutCount = ArrayCount(descSets);
 	pipelineLayoutInfo.pSetLayouts = descSets;
@@ -920,36 +918,24 @@ void VulkanEngine::initScene()
 	focusObject.mesh = getMesh("mrSaturn");
 	focusObject.material = getMaterial(materialDefaultLit.name);
 	glm::mat4 saturnTransform = glm::mat4{ 1.0f };
-	//saturnTransform = glm::rotate(saturnTransform, 90.0f * RadiansPerDegree, glm::vec3(0.f, 0.f, 1.f));
-	//saturnTransform = glm::rotate(saturnTransform, -90.0f * RadiansPerDegree, glm::vec3(0.f, 1.f, 0.f));
 	saturnTransform = glm::scale(saturnTransform, glm::vec3(4.f));
 	focusObject.modelMatrix = saturnTransform;
-
-	renderables.push_back(focusObject);
+	focusObject.defaultColor = glm::vec4(155.0f / 255.0f, 115.0f / 255.0f, 96.0f / 255.0f, 1.0f);
+	//renderables.push_back(focusObject);
 
 	RenderObject environmentObject;
 	environmentObject.mesh = getMesh("cube");
-	environmentObject.material = getMaterial(materialGreen.name);
+	environmentObject.material = getMaterial(materialDefaulColor.name);
 	f32 scale = 0.2f;
 	glm::mat4 scaleMat = glm::scale(glm::mat4{ 1.0 }, glm::vec3(scale, scale, scale));
 	for (s32 x = -16; x <= 16; ++x)
-	for (s32 y = -16; y <= 16; ++y) {
-		glm::mat4 translationMat = glm::translate(glm::mat4{ 1.0 }, glm::vec3(f32(x), f32(y), -scale));
-		environmentObject.modelMatrix = translationMat * scaleMat;
-		renderables.push_back(environmentObject);
-	}
-	environmentObject.material = getMaterial(materialBlue.name);
-	for (s32 x = -16; x <= 16; ++x)
-	for (s32 z = 1; z <= 32; ++z) {
-		glm::mat4 translationMat = glm::translate(glm::mat4{ 1.0 }, glm::vec3(f32(x), 16.0f, f32(z) - scale));
-		environmentObject.modelMatrix = translationMat * scaleMat;
-		renderables.push_back(environmentObject);
-	}
-	environmentObject.material = getMaterial(materialRed.name);
 	for (s32 y = -16; y <= 16; ++y)
-	for (s32 z = 1; z <= 32; ++z) {
-		glm::mat4 translationMat = glm::translate(glm::mat4{ 1.0 }, glm::vec3(-16.0f, f32(y), f32(z) - scale));
+	for (s32 z = 0; z <= 32; ++z) {
+		glm::vec3 pos{ x, y, z };
+		glm::vec3 color = (pos + glm::vec3(16.0f, 16.0f, 0.0f)) / glm::vec3(32.0f, 32.0f, 32.0f);
+		glm::mat4 translationMat = glm::translate(glm::mat4{ 1.0 }, pos);
 		environmentObject.modelMatrix = translationMat * scaleMat;
+		environmentObject.defaultColor = glm::vec4(color, 1.0f);
 		renderables.push_back(environmentObject);
 	}
 
@@ -1115,6 +1101,7 @@ void VulkanEngine::drawObjects(VkCommandBuffer cmd, RenderObject* firstObject, u
 		for (u32 i = 0; i < count; i++) {
 			RenderObject& object = firstObject[i];
 			objectData[i].modelMatrix = object.modelMatrix;
+			objectData[i].defaultColor = object.defaultColor;
 		}
 		objectData = nullptr;
 	vmaUnmapMemory(allocator, frame.objectBuffer.vmaAllocation);
@@ -1151,11 +1138,6 @@ void VulkanEngine::drawObjects(VkCommandBuffer cmd, RenderObject* firstObject, u
 		viewport.maxDepth = 1.0f;
 
 		vkCmdSetViewport(cmd, 0, 1, &viewport);
-
-		Mat4x4PushConstants constants{};
-		constants.renderMatrix = object.modelMatrix;
-
-		vkCmdPushConstants(cmd, object.material->pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(Mat4x4PushConstants), &constants);
 
 		//only bind the mesh if it's a different one from last bind
 		if (object.mesh != lastMesh) {

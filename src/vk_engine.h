@@ -27,10 +27,12 @@ struct RenderObject {
 	Mesh* mesh;
 	Material* material;
 	glm::mat4 modelMatrix;
+	glm::vec4 defaultColor;
 };
 
 struct GPUObjectData {
 	glm::mat4 modelMatrix;
+	glm::vec4 defaultColor;
 };
 
 struct GPUCameraData {
