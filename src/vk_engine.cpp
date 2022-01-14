@@ -914,24 +914,26 @@ void VulkanEngine::initScene()
 	RenderObject focusObject;
 	focusObject.mesh = getMesh("mrSaturn");
 	focusObject.material = getMaterial(materialDefaultLit.name);
-	glm::mat4 saturnTransform = glm::mat4{ 1.0f };
-	saturnTransform = glm::scale(saturnTransform, glm::vec3(4.f));
-	focusObject.modelMatrix = saturnTransform;
+	f32 focusScale = 20.0f;
+	glm::mat4 focusScaleMat = glm::scale(glm::mat4{ 1.0 }, glm::vec3(focusScale, focusScale, focusScale));
+	glm::mat4 focusTranslationMat = glm::translate(glm::mat4{ 1.0 }, glm::vec3(0.0f, 0.0f, -focusScale * 2.0f));
+	glm::mat4 focusTransform = focusTranslationMat * focusScaleMat;
+	focusObject.modelMatrix = focusTransform;
 	focusObject.defaultColor = glm::vec4(155.0f / 255.0f, 115.0f / 255.0f, 96.0f / 255.0f, 1.0f);
-	//renderables.push_back(focusObject);
+	renderables.push_back(focusObject);
 
 	RenderObject environmentObject;
 	environmentObject.mesh = getMesh("cube");
 	environmentObject.material = getMaterial(materialDefaulColor.name);
-	f32 scale = 0.2f;
-	glm::mat4 scaleMat = glm::scale(glm::mat4{ 1.0 }, glm::vec3(scale, scale, scale));
+	f32 envScale = 0.2f;
+	glm::mat4 envScaleMat = glm::scale(glm::mat4{ 1.0 }, glm::vec3(envScale, envScale, envScale));
 	for (s32 x = -16; x <= 16; ++x)
 	for (s32 y = -16; y <= 16; ++y)
 	for (s32 z = 0; z <= 32; ++z) {
 		glm::vec3 pos{ x, y, z };
 		glm::vec3 color = (pos + glm::vec3(16.0f, 16.0f, 0.0f)) / glm::vec3(32.0f, 32.0f, 32.0f);
 		glm::mat4 translationMat = glm::translate(glm::mat4{ 1.0 }, pos);
-		environmentObject.modelMatrix = translationMat * scaleMat;
+		environmentObject.modelMatrix = translationMat * envScaleMat;
 		environmentObject.defaultColor = glm::vec4(color, 1.0f);
 		renderables.push_back(environmentObject);
 	}
@@ -1060,7 +1062,7 @@ void VulkanEngine::drawFragmentShader(VkCommandBuffer cmd) {
 	vkCmdDraw(cmd, 6, 1, 0, 0);
 }
 
-void VulkanEngine::drawObjects(VkCommandBuffer cmd, RenderObject* firstObject, u32 count)
+void VulkanEngine::drawObjects(VkCommandBuffer cmd, RenderObject* firstObject, u32 objectCount)
 {
 	FrameData& frame = getCurrentFrame();
 
@@ -1097,7 +1099,7 @@ void VulkanEngine::drawObjects(VkCommandBuffer cmd, RenderObject* firstObject, u
 	GPUObjectData* objectData;
 	vmaMapMemory(allocator, frame.objectBuffer.vmaAllocation, (void**)&objectData);
 		// Note: if my data was organized differently, possibly SoA or AoSoA instead of simply AoS, I could use memcpy for large chunks of data instead of iterating through a loop
-		for (u32 i = 0; i < count; i++) {
+		for (u32 i = 0; i < objectCount; i++) {
 			RenderObject& object = firstObject[i];
 			objectData[i].modelMatrix = object.modelMatrix;
 			objectData[i].defaultColor = object.defaultColor;
@@ -1107,9 +1109,21 @@ void VulkanEngine::drawObjects(VkCommandBuffer cmd, RenderObject* firstObject, u
 	f64 ssboUploadTimeMs = StopTimer(ssboUploadTimer);
 	ImGui::Text("Uploading SSBO data: %5.5f ms", ssboUploadTimeMs);
 
+	VkViewport viewport{};
+	viewport.x = 0;
+	viewport.y = (f32)windowExtent.height;
+	viewport.width = (f32)windowExtent.width;
+	viewport.height = -viewport.y;
+	viewport.minDepth = 0.0f;
+	viewport.maxDepth = 1.0f;
+
+	vkCmdSetViewport(cmd, 0, 1, &viewport);
+
+	local_access Timer objectCmdBufferFillTimer;
+	StartTimer(objectCmdBufferFillTimer);
 	Mesh* lastMesh = nullptr;
 	Material* lastMaterial = nullptr;
-	for (u32 i = 0; i < count; i++)
+	for (u32 i = 0; i < objectCount; i++)
 	{
 		RenderObject& object = firstObject[i];
 
@@ -1128,12 +1142,29 @@ void VulkanEngine::drawObjects(VkCommandBuffer cmd, RenderObject* firstObject, u
 			// dynamic uniform offsets must be provided for every dynamic uniform buffer descriptor in the descriptor set(s)
 			// the dynamic offsets are ordered based firstly on the order of the descriptor set array and then on their binding index within that descriptor set
 			vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, object.material->pipelineLayout, 0 /*first set*/, ArrayCount(descSets), descSets, ArrayCount(dynamicUniformOffsets), dynamicUniformOffsets);
+		}
 
+		//only bind the mesh if it's a different one from last bind
+		if (object.mesh != lastMesh) {
 			//bind the mesh vertex buffer with offset 0
 			VkDeviceSize offset = 0;
 			vkCmdBindVertexBuffers(cmd, 0, 1, &object.mesh->vertexBuffer.vkBuffer, &offset);
 			lastMesh = object.mesh;
 		}
+
+		// if material AND mesh are the same, use instancing where objects will be differentiated by the SSBO object data using the instance index in the shader
+		u32 drawCount = 1;
+		u32 nextIndex = i + 1;
+		while (nextIndex < objectCount &&
+			firstObject[nextIndex].material == object.material &&
+			firstObject[nextIndex].mesh == object.mesh) {
+			nextIndex++;
+			drawCount++;
+		}
+
+		vkCmdDraw(cmd, object.mesh->vertices.size(), drawCount, 0, i);
+		i += drawCount - 1;
+	}
 
 	f64 objectCmdBufferFillMs = StopTimer(objectCmdBufferFillTimer);
 	ImGui::Text("Filling command buffer for object draws: %5.5f ms", objectCmdBufferFillMs);
