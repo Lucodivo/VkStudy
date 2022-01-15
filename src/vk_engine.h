@@ -18,6 +18,9 @@
 
 const u32 FRAME_OVERLAP = 2;
 
+#define DEFAULT_WINDOW_WIDTH 1920
+#define DEFAULT_WINDOW_HEIGHT 1080
+
 struct Material {
 	VkPipeline pipeline;
 	VkPipelineLayout pipelineLayout;
@@ -26,6 +29,7 @@ struct Material {
 struct RenderObject {
 	Mesh* mesh;
 	Material* material;
+	const char* materialName;
 	glm::mat4 modelMatrix;
 	glm::vec4 defaultColor;
 };
@@ -67,7 +71,7 @@ public:
 	bool isInitialized{ false };
 	u32 frameNumber {0};
 
-	VkExtent2D windowExtent{ 1700 , 900 };
+	VkExtent2D windowExtent{ DEFAULT_WINDOW_WIDTH, DEFAULT_WINDOW_HEIGHT };
 
 	struct SDL_Window* window{ nullptr };
 
@@ -137,9 +141,14 @@ public:
 		bool up, down, forward, back, left, right;
 		bool button1, button2, button3;
 		bool switch1;
-		bool quit;
+		bool quit, fullscreen;
 		f32 mouseDeltaX, mouseDeltaY;
 	} input = {};
+
+	MaterialInfo materialInfos[2] = {
+		materialDefaultLit,
+		materialDefaulColor
+	};
 
 private:
 	
@@ -163,10 +172,14 @@ private:
 	void loadMeshes();
 	void uploadMesh(Mesh& mesh);
 
+	void cleanupSwapChain();
+
+	void recreateSwapChain();
+
 	//create material and add it to the map
-	Material* createMaterial(VkPipeline pipeline, VkPipelineLayout layout, const std::string& name);
+	Material* createMaterial(VkPipeline pipeline, VkPipelineLayout layout, const char* name);
 	//returns nullptr if it can't be found
-	Material* getMaterial(const std::string& name);
+	Material* getMaterial(const char* name);
 	//returns nullptr if it can't be found
 	Mesh* getMesh(const std::string& name);
 
@@ -181,7 +194,7 @@ private:
 
 	void processInput();
 
-	void updateWorld();
+	void update();
 	FrameData& getCurrentFrame();
 
 	AllocatedBuffer createBuffer(size_t allocSize, VkBufferUsageFlags usage, VmaMemoryUsage memUsage);

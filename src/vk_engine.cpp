@@ -1,5 +1,6 @@
 
 #include "vk_engine.h"
+#include <windows.h>
 
 #include "util.h"
 
@@ -35,6 +36,8 @@ const VkClearValue depthClearValue {
 
 void VulkanEngine::init()
 {
+	// needed for SDL to counteract the scaling Windows can do for windows
+	SetProcessDPIAware();
 
 	initSDL();
 
@@ -62,6 +65,7 @@ void VulkanEngine::cleanup()
 
 	if (isInitialized) 
 	{
+		cleanupSwapChain();
 		mainDeletionQueue.flush();
 		vmaDestroyAllocator(allocator);
 		vkDestroyDevice(device, nullptr);
@@ -81,7 +85,12 @@ void VulkanEngine::draw()
 	// present semaphore is signaled when the presentation engine has finished using the image and
 	// it may now be used as a target for drawing
 	u32 swapchainImageIndex;
-	VK_CHECK(vkAcquireNextImageKHR(device, swapchain, DEFAULT_NANOSEC_TIMEOUT, frame.presentSemaphore, nullptr, &swapchainImageIndex));
+	VkResult acquireResult = vkAcquireNextImageKHR(device, swapchain, DEFAULT_NANOSEC_TIMEOUT, frame.presentSemaphore, nullptr, &swapchainImageIndex);
+	if (acquireResult == VK_ERROR_OUT_OF_DATE_KHR) {
+		recreateSwapChain();
+		acquireResult = vkAcquireNextImageKHR(device, swapchain, DEFAULT_NANOSEC_TIMEOUT, frame.presentSemaphore, nullptr, &swapchainImageIndex);
+	}
+	VK_CHECK(acquireResult);
 
 	VkCommandBuffer cmd = frame.mainCommandBuffer;
 	VK_CHECK(vkResetCommandBuffer(cmd, 0));
@@ -136,15 +145,22 @@ void VulkanEngine::draw()
 	presentInfo.waitSemaphoreCount = 1;
 	presentInfo.pImageIndices = &swapchainImageIndex;
 
-	VK_CHECK(vkQueuePresentKHR(graphicsQueue, &presentInfo));
+	VkResult presentResult = vkQueuePresentKHR(graphicsQueue, &presentInfo);
+	if (presentResult == VK_ERROR_OUT_OF_DATE_KHR || presentResult == VK_SUBOPTIMAL_KHR) {
+		recreateSwapChain();
+	}
+	else {
+		VK_CHECK(presentResult);
+	}
 
 	frameNumber++;
 }
 
 void VulkanEngine::processInput() {
-	SDL_Event e;
-	bool bQuit = false;
+	local_access bool altDown = false;
+	bool altWasDown = altDown;
 
+	SDL_Event e;
 	while (SDL_PollEvent(&e) != 0)
 	{
 		switch (e.type) {
@@ -161,6 +177,7 @@ void VulkanEngine::processInput() {
 				case SDLK_s: case SDLK_DOWN: input.back = true; break;
 				case SDLK_q: input.down = true; break;
 				case SDLK_e: input.up = true; break;
+				case SDLK_LALT: case SDLK_RALT: altDown = true; break;
 			}
 			break;
 		case SDL_KEYUP:
@@ -173,6 +190,8 @@ void VulkanEngine::processInput() {
 				case SDLK_s: case SDLK_DOWN: input.back = false; break;
 				case SDLK_q: input.down = false; break;
 				case SDLK_e: input.up = false;break;
+				case SDLK_LALT: case SDLK_RALT: altDown = false; break;
+				case SDLK_RETURN: if (altWasDown) { input.fullscreen = !input.fullscreen; } break;
 			}
 			break;
 		case SDL_MOUSEMOTION:
@@ -189,13 +208,29 @@ void VulkanEngine::processInput() {
 	}
 }
 
-void VulkanEngine::updateWorld() {
+void VulkanEngine::update() {
 	local_access f32 moveSpeed = 0.2f;
 	local_access f32 turnSpeed = 0.5f;
-	local_access bool editMode = true; // NOTE: We assume bool initialized as false
+	local_access bool editMode = true; // NOTE: We assume edit mode is enabled by default
+	local_access bool fullscreened = false; // NOTE: We assume windowed by default
 	glm::vec3 cameraDelta = {};
 	f32 yawDelta = 0.0f;
 	f32 pitchDelta = 0.0f;
+
+	if (fullscreened != input.fullscreen) {
+		fullscreened = !fullscreened;
+
+		if (fullscreened) {
+			SDL_SetWindowFullscreen(window, SDL_WINDOW_FULLSCREEN_DESKTOP);
+			SDL_GLContext sdlContext = SDL_GL_CreateContext(window);
+			SDL_GL_MakeCurrent(window, sdlContext);
+		}
+		else {
+			SDL_SetWindowFullscreen(window, 0);
+			SDL_GLContext sdlContext = SDL_GL_CreateContext(window);
+			SDL_GL_MakeCurrent(window, sdlContext);
+		}
+	}
 
 	if (editMode != input.switch1) {
 		editMode = input.switch1;
@@ -319,7 +354,7 @@ void VulkanEngine::run()
 	{
 		processInput();
 		startImguiFrame();
-		updateWorld();
+		update();
 		draw();
 	}
 }
@@ -347,6 +382,8 @@ void VulkanEngine::initImgui()
 	ImGuiIO& io = ImGui::GetIO(); (void)io;
 	//io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;     // Enable Keyboard Controls
 	//io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;      // Enable Gamepad Controls
+	
+	io.FontGlobalScale = 2.0f;
 
 	// Setup Dear ImGui style
 	ImGui::StyleColorsDark();
@@ -529,16 +566,6 @@ void VulkanEngine::initSwapchain()
 	VkImageViewCreateInfo depthImageViewInfo = vkinit::imageViewCreateInfo(depthFormat, depthImage.vkImage, VK_IMAGE_ASPECT_DEPTH_BIT);
 
 	VK_CHECK(vkCreateImageView(device, &depthImageViewInfo, nullptr, &depthImageView));
-
-	mainDeletionQueue.pushFunction([=]() {
-		vkDestroyImageView(device, depthImageView, nullptr);
-		vmaDestroyImage(allocator, depthImage.vkImage, depthImage.vmaAllocation);
-		u32 swapchainImageCount = swapchainImageViews.size();
-		for (u32 i = 0; i < swapchainImageCount; i++) {
-			vkDestroyImageView(device, swapchainImageViews[i], nullptr);
-		}
-		vkDestroySwapchainKHR(device, swapchain, nullptr);
-	});
 }
 
 void VulkanEngine::initCommands()
@@ -610,10 +637,6 @@ void VulkanEngine::initDefaultRenderpass()
 	renderPassInfo.pSubpasses = &subpass;
 
 	VK_CHECK(vkCreateRenderPass(device, &renderPassInfo, nullptr, &renderPass));
-
-	mainDeletionQueue.pushFunction([=]() {
-		vkDestroyRenderPass(device, renderPass, nullptr);
-	});
 }
 
 void VulkanEngine::initFramebuffers()
@@ -634,10 +657,6 @@ void VulkanEngine::initFramebuffers()
 		VkImageView attachments[] = { swapchainImageViews[i], depthImageView };
 		fbInfo.pAttachments = attachments;
 		VK_CHECK(vkCreateFramebuffer(device, &fbInfo, nullptr, &framebuffers[i]));
-
-		mainDeletionQueue.pushFunction([=]() {
-			vkDestroyFramebuffer(device, framebuffers[i], nullptr);
-		});
 	}
 }
 
@@ -792,15 +811,10 @@ void VulkanEngine::initDescriptors()
 }
 
 void VulkanEngine::initPipelines() {
-	MaterialInfo matInfos[] = {
-		materialDefaultLit,
-		materialDefaulColor
-	};
-
 	createFragmentShaderPipeline("fragment_shader_test.frag");
 
-	for (u32 i = 0; i < ArrayCount(matInfos); i++) {
-		createPipeline(matInfos[i]);
+	for (u32 i = 0; i < ArrayCount(materialInfos); i++) {
+		createPipeline(materialInfos[i]);
 	}
 }
 
@@ -840,11 +854,6 @@ void VulkanEngine::createFragmentShaderPipeline(const char* fragmentShader) {
 
 	vkDestroyShaderModule(device, fragShader, nullptr);
 	vkDestroyShaderModule(device, vertShader, nullptr);
-
-	mainDeletionQueue.pushFunction([=]() {
-		vkDestroyPipeline(device, fragmentShaderPipeline, nullptr);
-		vkDestroyPipelineLayout(device, fragmentShaderPipelineLayout, nullptr);
-		});
 }
 
 void VulkanEngine::createPipeline(MaterialInfo matInfo) {
@@ -902,18 +911,14 @@ void VulkanEngine::createPipeline(MaterialInfo matInfo) {
 
 	vkDestroyShaderModule(device, fragShader, nullptr);
 	vkDestroyShaderModule(device, vertShader, nullptr);
-
-	mainDeletionQueue.pushFunction([=]() {
-		vkDestroyPipeline(device, pipeline, nullptr);
-		vkDestroyPipelineLayout(device, pipelineLayout, nullptr);
-	});
 }
 
 void VulkanEngine::initScene()
 {
 	RenderObject focusObject;
 	focusObject.mesh = getMesh("mrSaturn");
-	focusObject.material = getMaterial(materialDefaultLit.name);
+	focusObject.materialName = materialDefaultLit.name;
+	focusObject.material = getMaterial(focusObject.materialName);
 	f32 focusScale = 20.0f;
 	glm::mat4 focusScaleMat = glm::scale(glm::mat4{ 1.0 }, glm::vec3(focusScale, focusScale, focusScale));
 	glm::mat4 focusTranslationMat = glm::translate(glm::mat4{ 1.0 }, glm::vec3(0.0f, 0.0f, -focusScale * 2.0f));
@@ -924,7 +929,8 @@ void VulkanEngine::initScene()
 
 	RenderObject environmentObject;
 	environmentObject.mesh = getMesh("cube");
-	environmentObject.material = getMaterial(materialDefaulColor.name);
+	environmentObject.materialName = materialDefaulColor.name;
+	environmentObject.material = getMaterial(environmentObject.materialName);
 	f32 envScale = 0.2f;
 	glm::mat4 envScaleMat = glm::scale(glm::mat4{ 1.0 }, glm::vec3(envScale, envScale, envScale));
 	for (s32 x = -16; x <= 16; ++x)
@@ -947,7 +953,7 @@ void VulkanEngine::initScene()
 void VulkanEngine::initCamera()
 {
 	camera = {};
-	camera.pos = { 0.f, -15.f, 6.f };
+	camera.pos = { 0.f, -50.f, 20.f };
 	camera.setForward({0.f, 1.f, 0.f});
 }
 
@@ -1008,7 +1014,62 @@ void VulkanEngine::uploadMesh(Mesh& mesh)
 	vmaUnmapMemory(allocator, mesh.vertexBuffer.vmaAllocation);
 }
 
-Material* VulkanEngine::createMaterial(VkPipeline pipeline, VkPipelineLayout layout, const std::string& name)
+void VulkanEngine::cleanupSwapChain() {
+	// NOTE: Pipelines depend on swap chain due to its dependencies on the window extent and the renderpass
+	vkDestroyPipeline(device, fragmentShaderPipeline, nullptr);
+	vkDestroyPipelineLayout(device, fragmentShaderPipelineLayout, nullptr);
+	for (std::pair<std::string, Material> element : materials) {
+		Material& mat = element.second;
+		vkDestroyPipeline(device, mat.pipeline, nullptr);
+		vkDestroyPipelineLayout(device, mat.pipelineLayout, nullptr);
+	}
+	materials.clear();
+	
+	// NOTE: Framebuffers depend on swap chain due to it holding attachments for the swap chain and depth image views
+	u32 swapchainImageCount = swapchainImageViews.size();
+	for (u32 i = 0; i < swapchainImageCount; i++) {
+		vkDestroyFramebuffer(device, framebuffers[i], nullptr);
+	}
+	// NOTE: Renderpass depends on the swap chain due to the swap chain's image format
+	vkDestroyRenderPass(device, renderPass, nullptr);
+
+	// NOTE: Depth image view depends on the swap chain due to it's dependency on the window extent
+	vkDestroyImageView(device, depthImageView, nullptr);
+	vmaDestroyImage(allocator, depthImage.vkImage, depthImage.vmaAllocation);
+
+	for (u32 i = 0; i < swapchainImageCount; i++) {
+		vkDestroyImageView(device, swapchainImageViews[i], nullptr);
+	}
+	swapchainImageViews.clear();
+	vkDestroySwapchainKHR(device, swapchain, nullptr);
+}
+
+void VulkanEngine::recreateSwapChain() {
+	s32 w, h;
+	SDL_GetWindowSize(window, &w, &h);
+	while (w == 0 || h == 0) {
+		// TODO: Does this actually work?
+		SDL_WaitEvent(NULL);
+		SDL_GetWindowSize(window, &w, &h);
+	}
+	windowExtent.width = w;
+	windowExtent.height = h;
+
+	vkDeviceWaitIdle(device);
+
+	cleanupSwapChain();
+
+	initSwapchain();
+	initDefaultRenderpass();
+	initFramebuffers();
+	initPipelines();
+
+	for (RenderObject& object : renderables) {
+		object.material = getMaterial(object.materialName);
+	}
+}
+
+Material* VulkanEngine::createMaterial(VkPipeline pipeline, VkPipelineLayout layout, const char* name)
 {
 	Material material;
 	material.pipeline = pipeline;
@@ -1017,7 +1078,7 @@ Material* VulkanEngine::createMaterial(VkPipeline pipeline, VkPipelineLayout lay
 	return &materials[name];
 }
 
-Material* VulkanEngine::getMaterial(const std::string& name)
+Material* VulkanEngine::getMaterial(const char* name)
 {
 	//search for the object, and return nullptr if not found
 	auto it = materials.find(name);
@@ -1128,6 +1189,7 @@ void VulkanEngine::drawObjects(VkCommandBuffer cmd, RenderObject* firstObject, u
 		RenderObject& object = firstObject[i];
 
 		//only bind the pipeline if it doesn't match with the already bound one
+		Assert(object.material != nullptr)
 		if (object.material != lastMaterial) {
 			vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, object.material->pipeline);
 			lastMaterial = object.material;
