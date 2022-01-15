@@ -19,8 +19,11 @@ namespace vkinit {
 	VkImageViewCreateInfo imageViewCreateInfo(VkFormat format, VkImage image, VkImageAspectFlags aspectFlags);
 	VkPipelineDepthStencilStateCreateInfo depthStencilCreateInfo(bool bDepthTest, bool bDepthWrite, VkCompareOp compareOp);
 	VkRenderPassBeginInfo renderPassBeginInfo(VkRenderPass renderPass, VkExtent2D windowExtent, VkFramebuffer framebuffer);
-	VkCommandBufferBeginInfo commandBufferBeginInfo(VkCommandBufferUsageFlags usageFlags);
+	VkCommandBufferBeginInfo commandBufferBeginInfo(VkCommandBufferUsageFlags usageFlags = 0);
+	VkSubmitInfo submitInfo(VkCommandBuffer* cmd);
 	VkDescriptorSetLayoutBinding descriptorSetLayoutBinding(VkDescriptorType descriptorType, VkShaderStageFlags pipelineStageFlags, u32 bindingIndex);
 	VkWriteDescriptorSet writeDescriptorBuffer(VkDescriptorType descriptorType, VkDescriptorSet descriptorSet, VkDescriptorBufferInfo* bufferInfo, u32 bindingIndex);
+	VkFenceCreateInfo fenceCreateInfo(VkFenceCreateFlags flags = 0);
+	VkSemaphoreCreateInfo semaphoreCreateInfo();
 }
 

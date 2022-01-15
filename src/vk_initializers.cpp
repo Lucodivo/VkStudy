@@ -188,6 +188,23 @@ VkCommandBufferBeginInfo vkinit::commandBufferBeginInfo(VkCommandBufferUsageFlag
 	return cmdBeginInfo;
 }
 
+VkSubmitInfo vkinit::submitInfo(VkCommandBuffer* cmd)
+{
+	VkSubmitInfo info = {};
+	info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+	info.pNext = nullptr;
+
+	info.waitSemaphoreCount = 0;
+	info.pWaitSemaphores = nullptr;
+	info.pWaitDstStageMask = nullptr;
+	info.commandBufferCount = 1;
+	info.pCommandBuffers = cmd;
+	info.signalSemaphoreCount = 0;
+	info.pSignalSemaphores = nullptr;
+
+	return info;
+}
+
 VkDescriptorSetLayoutBinding vkinit::descriptorSetLayoutBinding(VkDescriptorType descriptorType, VkShaderStageFlags pipelineStageFlags, u32 bindingIndex)
 {
 	VkDescriptorSetLayoutBinding setbind = {};
@@ -214,4 +231,21 @@ VkWriteDescriptorSet vkinit::writeDescriptorBuffer(VkDescriptorType descriptorTy
 	write.pBufferInfo = bufferInfo;
 
 	return write;
+}
+
+VkFenceCreateInfo vkinit::fenceCreateInfo(VkFenceCreateFlags flags)
+{
+	VkFenceCreateInfo fenceCreateInfo;
+	fenceCreateInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+	fenceCreateInfo.pNext = nullptr;
+	fenceCreateInfo.flags = flags;
+	return fenceCreateInfo;
+}
+
+VkSemaphoreCreateInfo vkinit::semaphoreCreateInfo() {
+	VkSemaphoreCreateInfo semaphoreCreateInfo;
+	semaphoreCreateInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+	semaphoreCreateInfo.pNext = nullptr;
+	semaphoreCreateInfo.flags = 0;
+	return semaphoreCreateInfo;
 }

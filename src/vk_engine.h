@@ -53,6 +53,12 @@ struct GPUSceneData {
 	glm::vec4 sunlightColor;
 };
 
+struct UploadContext {
+	VkFence uploadFence;
+	VkCommandPool commandPool;
+	VkCommandBuffer commandBuffer;
+};
+
 struct FrameData {
 	VkSemaphore presentSemaphore, renderSemaphore;
 	VkFence renderFence;
@@ -149,6 +155,10 @@ public:
 		materialDefaultLit,
 		materialDefaulColor
 	};
+
+	UploadContext uploadContext;
+
+	void immediateSubmit(std::function<void(VkCommandBuffer cmd)>&& function);
 
 private:
 	
