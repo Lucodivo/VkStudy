@@ -46,7 +46,7 @@ VertexInputDescription Vertex::getVertexDescriptions()
 bool Mesh::loadFromGltf(const char* file) {
 	// simple check for .glb binary file type
 	bool glb = false;
-	size_t strLength = strlen(file);
+	u64 strLength = strlen(file);
 	char lastChar = file[strLength - 1];
 	if (lastChar == 'b' || lastChar == 'B') {
 		glb = true;
@@ -92,7 +92,7 @@ bool Mesh::loadFromGltf(const char* file) {
 
 	if (!ret) {
 		printf("Failed to parse glTF\n");
-		return -1;
+		false;
 	}
 
 	auto populateAttributeMetadata = [](tinygltf::Model& model, const char* keyString, const tinygltf::Primitive* gltfPrimitive) -> gltfAttributeMetadata {
@@ -107,13 +107,13 @@ bool Mesh::loadFromGltf(const char* file) {
 	};
 
 	Assert(!gltfModel.meshes.empty());
-	u32 meshCount = gltfModel.meshes.size();
+	u64 meshCount = gltfModel.meshes.size();
 	std::vector<tinygltf::Accessor>* gltfAccessors = &gltfModel.accessors;
 	std::vector<tinygltf::BufferView>* gltfBufferViews = &gltfModel.bufferViews;
 	for (u32 i = 0; i < meshCount; i++) {
 		tinygltf::Mesh* gltfMesh = &gltfModel.meshes[i];
 		Assert(!gltfMesh->primitives.empty());
-		u32 primitiveCount = gltfMesh->primitives.size();
+		u64 primitiveCount = gltfMesh->primitives.size();
 		for (u32 j = 0; j < primitiveCount; j++) {
 			tinygltf::Primitive* gltfPrimitive = &gltfMesh->primitives[j];
 			Assert(gltfPrimitive->indices > -1);
@@ -159,8 +159,8 @@ bool Mesh::loadFromGltf(const char* file) {
 				(f32)baseColor[2]
 			};
 
-			u32 indexCount = indicesGLTFBufferByteLength / sizeof(u16);
-			u32 vertexCount = positionAttribute.bufferByteLength / positionAttribute.numComponents / sizeof(f32);
+			u64 indexCount = indicesGLTFBufferByteLength / sizeof(u16);
+			u64 vertexCount = positionAttribute.bufferByteLength / positionAttribute.numComponents / sizeof(f32);
 			for (u32 i = 0; i < indexCount; i++) {
 				u16 vertIndex = indicesDataOffset[i];
 
@@ -183,6 +183,8 @@ bool Mesh::loadFromGltf(const char* file) {
 			}
 		}
 	}
+
+	return true;
 }
 
 bool Mesh::loadFromObj(const char* file, const char* materialDir)
@@ -210,34 +212,34 @@ bool Mesh::loadFromObj(const char* file, const char* materialDir)
 	//materials contains the information about the material of each shape, but we won't use it.
 	std::vector<tinyobj::material_t> materials = reader.GetMaterials();
 
-	for (size_t s = 0; s < shapes.size(); s++) {
+	for (u32 s = 0; s < shapes.size(); s++) {
 		// Loop over faces(polygon)
-		size_t index_offset = 0;
-		for (size_t f = 0; f < shapes[s].mesh.num_face_vertices.size(); f++) {
+		u32 index_offset = 0;
+		for (u64 f = 0; f < shapes[s].mesh.num_face_vertices.size(); f++) {
 			//hardcode loading to triangles
-			int fv = 3;
+			const u32 verticesPerTriangle = 3;
 			// Loop over vertices in the face.
-			for (size_t v = 0; v < fv; v++) {
+			for (u32 v = 0; v < verticesPerTriangle; v++) {
 				// access to vertex
 				tinyobj::index_t idx = shapes[s].mesh.indices[index_offset + v];
 
 				Vertex newVert;
 
 				//vertex position
-				newVert.position.x = attrib.vertices[3 * idx.vertex_index + 0];
-				newVert.position.y = attrib.vertices[3 * idx.vertex_index + 1];
-				newVert.position.z = attrib.vertices[3 * idx.vertex_index + 2];
+				newVert.position.x = attrib.vertices[(3 * idx.vertex_index) + 0];
+				newVert.position.y = attrib.vertices[(3 * idx.vertex_index) + 1];
+				newVert.position.z = attrib.vertices[(3 * idx.vertex_index) + 2];
 
 				//vertex normal
-				newVert.normal.x = attrib.normals[3 * idx.normal_index + 0];
-				newVert.normal.y = attrib.normals[3 * idx.normal_index + 1];
-				newVert.normal.z = attrib.normals[3 * idx.normal_index + 2];
+				newVert.normal.x = attrib.normals[(3 * idx.normal_index) + 0];
+				newVert.normal.y = attrib.normals[(3 * idx.normal_index) + 1];
+				newVert.normal.z = attrib.normals[(3 * idx.normal_index) + 2];
 
 				// Optional: vertex colors
 				if (!attrib.colors.empty()) {
-					newVert.color.x = attrib.colors[3*size_t(idx.vertex_index)+0];
-					newVert.color.x = attrib.colors[3*size_t(idx.vertex_index)+1];
-					newVert.color.x = attrib.colors[3*size_t(idx.vertex_index)+2];
+					newVert.color.x = attrib.colors[(3* idx.vertex_index)+0];
+					newVert.color.x = attrib.colors[(3* idx.vertex_index)+1];
+					newVert.color.x = attrib.colors[(3* idx.vertex_index)+2];
 				}
 				else {
 					newVert.color = newVert.normal;
@@ -245,7 +247,7 @@ bool Mesh::loadFromObj(const char* file, const char* materialDir)
 
 				vertices.push_back(newVert);
 			}
-			index_offset += fv;
+			index_offset += verticesPerTriangle;
 		}
 	}
 

@@ -53,12 +53,6 @@ struct GPUSceneData {
 	glm::vec4 sunlightColor;
 };
 
-struct UploadContext {
-	VkFence uploadFence;
-	VkCommandPool commandPool;
-	VkCommandBuffer commandBuffer;
-};
-
 struct FrameData {
 	VkSemaphore presentSemaphore, renderSemaphore;
 	VkFence renderFence;
@@ -114,7 +108,7 @@ public:
 
 	DeletionQueue mainDeletionQueue;
 
-	VmaAllocator allocator;
+	VmaAllocator vmaAllocator;
 
 	VkImageView depthImageView;
 	AllocatedImage depthImage;
@@ -139,7 +133,7 @@ public:
 	// a single dynamic uniform buffer used for all frames
 	struct {
 		AllocatedBuffer buffer;
-		u32 sceneOffset;
+		u64 sceneOffset;
 		u32 cameraOffset;
 	} globalBuffer;
 
@@ -157,8 +151,6 @@ public:
 	};
 
 	UploadContext uploadContext;
-
-	void immediateSubmit(std::function<void(VkCommandBuffer cmd)>&& function);
 
 private:
 	
@@ -207,6 +199,5 @@ private:
 	void update();
 	FrameData& getCurrentFrame();
 
-	AllocatedBuffer createBuffer(size_t allocSize, VkBufferUsageFlags usage, VmaMemoryUsage memUsage);
-	size_t padUniformBufferSize(size_t originalSize);
+	u64 padUniformBufferSize(u64 originalSize);
 };

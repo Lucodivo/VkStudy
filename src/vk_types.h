@@ -8,6 +8,17 @@
 
 #include "types.h"
 
+#define VK_CHECK(x)                                                 \
+	do                                                              \
+	{                                                               \
+		VkResult err = x;                                           \
+		if (err)                                                    \
+		{                                                           \
+			std::cout <<"Detected Vulkan error: " << err << std::endl; \
+			abort();                                                \
+		}                                                           \
+	} while (0)
+
 struct AllocatedBuffer {
     VkBuffer vkBuffer;
     VmaAllocation vmaAllocation;
@@ -16,6 +27,19 @@ struct AllocatedBuffer {
 struct AllocatedImage {
   VkImage vkImage;
   VmaAllocation vmaAllocation;
+};
+
+struct Texture {
+	AllocatedImage image;
+	VkImageView imageView;
+};
+
+struct UploadContext {
+	VkDevice device;
+	VkQueue queue;
+	VkFence uploadFence;
+	VkCommandPool commandPool;
+	VkCommandBuffer commandBuffer;
 };
 
 struct DeletionQueue
@@ -27,7 +51,7 @@ struct DeletionQueue
 	}
 
 	void flush() {
-		for (s32 i = deletors.size() - 1; i >= 0; i--) {
+		for (s64 i = (s64)deletors.size() - 1; i >= 0; i--) {
 			deletors[i]();
 		}
 		deletors.clear();
