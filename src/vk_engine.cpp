@@ -70,6 +70,12 @@ void VulkanEngine::cleanup()
 		cleanupSwapChain();
 		mainDeletionQueue.flush();
 		vmaDestroyAllocator(vmaAllocator);
+
+		for (std::pair<std::string, VkShaderModule> pair : cachedShaderModules) {
+			VkShaderModule shaderModule = pair.second;
+			vkDestroyShaderModule(device, shaderModule, nullptr);
+		}
+
 		vkDestroyDevice(device, nullptr);
 		vkDestroySurfaceKHR(instance, surface, nullptr);
 		vkb::destroy_debug_utils_messenger(instance, debugMessenger);
@@ -298,24 +304,6 @@ void VulkanEngine::update() {
 FrameData& VulkanEngine::getCurrentFrame()
 {
 	return frames[frameNumber % FRAME_OVERLAP];
-}
-
-u64 VulkanEngine::padUniformBufferSize(u64 originalSize)
-{
-	// Calculate required alignment based on minimum device offset alignment
-	u64 alignment = gpuProperties.limits.minUniformBufferOffsetAlignment;
-	u64 alignedSize = originalSize;
-	if (alignment > 0) {
-		// As the alignment must be a power of 2...
-		// (alignment - 1) creates a mask that is all 1s below the alignment
-		// ~(alignment - 1) creates a mask that is all 1s at and above the alignment
-		alignedSize = (originalSize + (alignment - 1)) & ~(alignment - 1);
-
-		// Note: similar idea as above but less optimized below
-		// memory_index alignmentCount = (original + (alignment - 1)) / alignment;
-		// alignedSize = alignmentCount * alignment;
-	}
-	return alignedSize;
 }
 
 void VulkanEngine::run()
@@ -806,11 +794,8 @@ void VulkanEngine::initPipelines() {
 }
 
 void VulkanEngine::createFragmentShaderPipeline(const char* fragmentShader) {
-	VkShaderModule vertShader;
-	loadShaderModule("hard_coded_fullscreen_quad.vert", &vertShader);
-
-	VkShaderModule fragShader;
-	loadShaderModule(fragmentShader, &fragShader);
+	VkShaderModule vertShader = acquireShader("hard_coded_fullscreen_quad.vert");
+	VkShaderModule fragShader = acquireShader(fragmentShader);
 
 	VkPipelineLayoutCreateInfo pipelineLayoutInfo = vkinit::pipelineLayoutCreateInfo();
 	pipelineLayoutInfo.pPushConstantRanges = &fragmentShaderPushConstantsRange;
@@ -838,18 +823,23 @@ void VulkanEngine::createFragmentShaderPipeline(const char* fragmentShader) {
 	pipelineBuilder.pipelineLayout = fragmentShaderPipelineLayout;
 
 	fragmentShaderPipeline = pipelineBuilder.buildPipeline(device, renderPass);
+}
 
-	vkDestroyShaderModule(device, fragShader, nullptr);
-	vkDestroyShaderModule(device, vertShader, nullptr);
+VkShaderModule VulkanEngine::acquireShader(const char* fileName) {
+	VkShaderModule resultShader;
+	if (cachedShaderModules.find(fileName) != cachedShaderModules.end()) {
+		resultShader = cachedShaderModules[fileName];
+	}
+	else {
+		loadShaderModule(fileName, &resultShader);
+		cachedShaderModules[fileName] = resultShader;
+	}
+	return resultShader;
 }
 
 void VulkanEngine::createPipeline(MaterialInfo matInfo) {
-	// TODO: vertex shader modules can be cached in case of reuse in multiple pipelines?
-	VkShaderModule vertShader;
-	loadShaderModule(matInfo.vertFileName, &vertShader);
-
-	VkShaderModule fragShader;
-	loadShaderModule(matInfo.fragFileName, &fragShader);
+	VkShaderModule vertShader = acquireShader(matInfo.vertFileName);
+	VkShaderModule fragShader = acquireShader(matInfo.fragFileName);
 
 	// TODO: Pipeline layout can be reused for several pipelines/materials
 	// TODO: Reuse of pipeline layouts will allows for push constants to be used for several pipelines
@@ -895,9 +885,6 @@ void VulkanEngine::createPipeline(MaterialInfo matInfo) {
 	VkPipeline pipeline = pipelineBuilder.buildPipeline(device, renderPass);
 
 	createMaterial(pipeline, pipelineLayout, matInfo.name);
-
-	vkDestroyShaderModule(device, fragShader, nullptr);
-	vkDestroyShaderModule(device, vertShader, nullptr);
 }
 
 void VulkanEngine::initScene()

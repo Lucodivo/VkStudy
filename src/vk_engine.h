@@ -153,6 +153,8 @@ public:
 	UploadContext uploadContext;
 
 private:
+
+	std::unordered_map<std::string, VkShaderModule> cachedShaderModules;
 	
 	void initSDL();
 
@@ -168,33 +170,32 @@ private:
 	void createPipeline(MaterialInfo matInfo);
 	void initPipelines();
 	void createFragmentShaderPipeline(const char* fragmentShader);
-	void initScene();
 
+	void processInput();
+
+	void update();
+	
+	void initScene();
 	void initCamera();
-	void loadMeshes();
-	void uploadMesh(Mesh& mesh);
 
 	void cleanupSwapChain();
-
 	void recreateSwapChain();
 
-	//create material and add it to the map
-	Material* createMaterial(VkPipeline pipeline, VkPipelineLayout layout, const char* name);
-	//returns nullptr if it can't be found
-	Material* getMaterial(const char* name);
-	//returns nullptr if it can't be found
-	Mesh* getMesh(const std::string& name);
+	void loadShaderModule(std::string filePath, VkShaderModule* outShaderModule);
+	VkShaderModule acquireShader(const char* fileName);
+
+	void loadMeshes();
+	void uploadMesh(Mesh& mesh);
+	Mesh* getMesh(const std::string& name); //returns nullptr if it can't be found
+	
+	Material* createMaterial(VkPipeline pipeline, VkPipelineLayout layout, const char* name); //create material and add it to the map
+	Material* getMaterial(const char* name); //returns nullptr if it can't be found
 
 	void drawFragmentShader(VkCommandBuffer cmd);
-
 	void drawObjects(VkCommandBuffer cmd, RenderObject* first, u32 count);
 
 	void startImguiFrame();
 	void renderImgui(VkCommandBuffer cmd);
-
-	void loadShaderModule(std::string filePath, VkShaderModule* outShaderModule);
-
-	void processInput();
 
 	void update();
 	FrameData& getCurrentFrame();

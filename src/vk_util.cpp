@@ -51,3 +51,21 @@ void vkutil::immediateSubmit(const UploadContext& uploadContext, std::function<v
 	// reset command buffers in command pool
 	vkResetCommandPool(uploadContext.device, uploadContext.commandPool, 0);
 }
+
+u64 vkutil::padUniformBufferSize(const VkPhysicalDeviceProperties& gpuProperties, u64 originalSize)
+{
+	// Calculate required alignment based on minimum device offset alignment
+	u64 alignment = gpuProperties.limits.minUniformBufferOffsetAlignment;
+	u64 alignedSize = originalSize;
+	if (alignment > 0) {
+		// As the alignment must be a power of 2...
+		// (alignment - 1) creates a mask that is all 1s below the alignment
+		// ~(alignment - 1) creates a mask that is all 1s at and above the alignment
+		alignedSize = (originalSize + (alignment - 1)) & ~(alignment - 1);
+
+		// Note: similar idea as above but less optimized below
+		// memory_index alignmentCount = (original + (alignment - 1)) / alignment;
+		// alignedSize = alignmentCount * alignment;
+	}
+	return alignedSize;
+}
