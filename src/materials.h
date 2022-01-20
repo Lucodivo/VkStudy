@@ -1,8 +1,5 @@
 #pragma once
 
-#include <vk_types.h>
-#include "types.h"
-
 #define SHADER_DIR "../shaders/"
 
 struct MaterialInfo {

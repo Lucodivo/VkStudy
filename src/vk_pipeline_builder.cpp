@@ -1,7 +1,3 @@
-#include "vk_pipeline_builder.h"
-
-#include <iostream>
-
 VkPipeline PipelineBuilder::buildPipeline(VkDevice device, VkRenderPass pass) {
 	VkPipelineViewportStateCreateInfo viewportState = {};
 	viewportState.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;

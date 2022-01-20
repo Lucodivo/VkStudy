@@ -1,7 +1,5 @@
 ﻿#pragma once
 
-#include <vk_types.h>
-
 namespace vkinit {
 	VkCommandPoolCreateInfo commandPoolCreateInfo(uint32_t queueFamilyIndex, VkCommandPoolCreateFlags flags = 0);
 

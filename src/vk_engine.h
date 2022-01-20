@@ -3,19 +3,6 @@
 
 #pragma once
 
-#include <vk_types.h>
-#include <vector>
-
-#include <glm/glm.hpp>
-#include "vk_mesh.h"
-#include "materials.h"
-#include "types.h"
-#include "camera.h"
-
-#include "imgui.h"
-#include "imgui_impl_sdl.h"
-#include "imgui_impl_vulkan.h"
-
 const u32 FRAME_OVERLAP = 2;
 
 #define DEFAULT_WINDOW_WIDTH 1920

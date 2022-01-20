@@ -1,9 +1,3 @@
-#include "camera.h"
-
-#include <iostream>
-
-#include <glm/gtx/transform.hpp>
-
 const glm::vec3 WORLD_UP = { 0.f, 0.f, 1.f };
 
 const f32 maxPitch = 70.0f * RadiansPerDegree;

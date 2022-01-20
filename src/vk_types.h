@@ -1,13 +1,5 @@
 ﻿#pragma once
 
-#include <vector>
-#include <functional>
-
-#include <vulkan/vulkan.h>
-#include "vk_mem_alloc.h"
-
-#include "types.h"
-
 #define VK_CHECK(x)                                                 \
 	do                                                              \
 	{                                                               \

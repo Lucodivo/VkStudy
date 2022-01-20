@@ -1,27 +1,3 @@
-
-#include "vk_engine.h"
-
-#include <iostream>
-#include <fstream>
-
-#include <windows.h>
-
-#include <SDL.h>
-#include <SDL_vulkan.h>
-
-#include "util.h"
-
-#include "vk_types.h"
-#include "vk_initializers.h"
-#include "vk_pipeline_builder.h"
-#include "vk_util.h"
-#include "vk_textures.h"
-
-#include "VkBootstrap.h"
-#define VMA_IMPLEMENTATION
-#include "vk_mem_alloc.h"
-#include <glm/gtx/transform.hpp>
-
 #define DEFAULT_NANOSEC_TIMEOUT 1'000'000'000
 
 #define PRESENT_MODE VK_PRESENT_MODE_FIFO_KHR

@@ -1,5 +1,3 @@
-#include "util.h"
-
 void StartTimer(Timer& timer) {
   timer.prev = std::chrono::high_resolution_clock::now();
   timer.delta = 0.0;

@@ -1,10 +1,3 @@
-#include <vk_mesh.h>
-#include <tiny_obj_loader.h>
-#include <tiny_gltf.h>
-#include <iostream>
-
-#include "types.h"
-
 VertexInputDescription Vertex::getVertexDescriptions()
 {
 	VertexInputDescription description;

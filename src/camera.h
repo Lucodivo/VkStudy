@@ -1,8 +1,5 @@
 #pragma once
 
-#include <glm/glm.hpp>
-#include "types.h"
-
 class Camera {
 public:
   glm::vec3 pos;

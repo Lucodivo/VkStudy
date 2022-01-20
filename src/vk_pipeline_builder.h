@@ -1,5 +1,3 @@
-#include <vk_types.h>
-
 class PipelineBuilder {
 public:
 	std::vector<VkPipelineShaderStageCreateInfo> shaderStages;

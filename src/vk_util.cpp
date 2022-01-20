@@ -1,9 +1,3 @@
-#include "vk_util.h"
-
-#include <iostream>
-
-#include "vk_initializers.h"
-
 AllocatedBuffer vkutil::createBuffer(VmaAllocator& vmaAllocator, u64 allocSize, VkBufferUsageFlags usage, VmaMemoryUsage memUsage) {
 	//allocate vertex buffer
 	VkBufferCreateInfo bufferInfo = {};

@@ -1,11 +1,3 @@
-#include "vk_textures.h"
-#include <iostream>
-
-#include "vk_util.h"
-#include "vk_initializers.h"
-
-#include <stb_image.h>
-
 bool vkutil::loadImageFromFile(VmaAllocator& vmaAllocator, const UploadContext& uploadContext, const char* file, AllocatedImage& outImage)
 {
 	s32 texWidth, texHeight, texChannels;
