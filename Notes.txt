@@ -23,3 +23,7 @@ Buffers:
   - Medium amount of data (Max size on RTX 3060 is 65536 bytes)
 - Dynamic Uniform Buffers
 - Storage Buffers
+
+
+TODO:
+- Minimizing breaks app
