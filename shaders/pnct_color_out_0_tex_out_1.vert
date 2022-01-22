@@ -3,13 +3,11 @@
 layout (location = 0) in vec3 vPosition;
 layout (location = 1) in vec3 vNormal;
 layout (location = 2) in vec3 vColor;
-
-// TODO: Remove the following line. Currently just to stop validation layer from complaining
-layout (location = 3) in vec3 butts;
+layout (location = 3) in vec2 vTexCoord;
 
 layout (location = 0) out vec3 outColor;
+layout (location = 1) out vec2 texCoord;
 
-// NOTE: grabbed from descriptor set bound to slot 0, with a binding of 0 within that descriptor set
 layout(set = 0, binding = 0) uniform CameraBuffer{
 	mat4 view;
 	mat4 proj;
@@ -25,7 +23,9 @@ layout(std140, set = 1, binding = 0) readonly buffer ObjectBuffer {
 
 void main()
 {
-  mat4 transformMatrix = (cameraData.viewproj * objectBuffer.objects[gl_BaseInstance].model);
+	mat4 modelMatrix = objectBuffer.objects[gl_InstanceIndex].model;
+	mat4 transformMatrix = cameraData.viewproj * modelMatrix;
 	gl_Position = transformMatrix * vec4(vPosition, 1.0f);
 	outColor = vColor;
+	texCoord = vTexCoord;
 }

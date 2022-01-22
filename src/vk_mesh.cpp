@@ -3,10 +3,10 @@ VertexInputDescription Vertex::getVertexDescriptions()
 	VertexInputDescription description;
 
 	// 1 vertex buffer binding, with a per-vertex rate
-	VkVertexInputBindingDescription mainBinding = {};
-	mainBinding.binding = 0; // this binding number connects the attributes to their binding description
-	mainBinding.stride = sizeof(Vertex);
-	mainBinding.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+	VkVertexInputBindingDescription bindingDesc = {};
+	bindingDesc.binding = 0; // this binding number connects the attributes to their binding description
+	bindingDesc.stride = sizeof(Vertex);
+	bindingDesc.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
 
 	//Position at Location 0
 	VkVertexInputAttributeDescription positionAttribute = {};
@@ -29,18 +29,41 @@ VertexInputDescription Vertex::getVertexDescriptions()
 	colorAttribute.format = VK_FORMAT_R32G32B32_SFLOAT;
 	colorAttribute.offset = offsetof(Vertex, color);
 
-	description.bindings.push_back(mainBinding);
+	//Color at Location 3
+	VkVertexInputAttributeDescription uvAttribute = {};
+	uvAttribute.binding = 0;
+	uvAttribute.location = 3;
+	uvAttribute.format = VK_FORMAT_R32G32_SFLOAT;
+	uvAttribute.offset = offsetof(Vertex, uv);
+
+	description.bindingDesc = bindingDesc;
 	description.attributes.push_back(positionAttribute);
 	description.attributes.push_back(normalAttribute);
 	description.attributes.push_back(colorAttribute);
+	description.attributes.push_back(uvAttribute);
 	return description;
 }
 
-bool Mesh::loadFromGltf(const char* file) {
+bool Mesh::loadFromFile(const char* fileName)
+{
+	// dumb simple check for file type
+	u64 strLength = strlen(fileName);
+	char lastChar = fileName[strLength - 1];
+	switch (lastChar) {
+	case 'l': case 'L': case 'b': case 'B':
+		return loadFromGltf(fileName);
+	case 'j': case 'J':
+		return loadFromObj(fileName);
+	default:
+		return false;
+	}
+}
+
+bool Mesh::loadFromGltf(const char* fileName) {
 	// simple check for .glb binary file type
 	bool glb = false;
-	u64 strLength = strlen(file);
-	char lastChar = file[strLength - 1];
+	u64 strLength = strlen(fileName);
+	char lastChar = fileName[strLength - 1];
 	if (lastChar == 'b' || lastChar == 'B') {
 		glb = true;
 	}
@@ -68,10 +91,10 @@ bool Mesh::loadFromGltf(const char* file) {
 
 	bool ret;
 	if (!glb) {
-		ret = loader.LoadASCIIFromFile(&gltfModel, &err, &warn, file);
+		ret = loader.LoadASCIIFromFile(&gltfModel, &err, &warn, fileName);
 	}
 	else {
-		ret = loader.LoadBinaryFromFile(&gltfModel, &err, &warn, file);
+		ret = loader.LoadBinaryFromFile(&gltfModel, &err, &warn, fileName);
 	}
 
 
@@ -110,6 +133,14 @@ bool Mesh::loadFromGltf(const char* file) {
 		for (u32 j = 0; j < primitiveCount; j++) {
 			tinygltf::Primitive* gltfPrimitive = &gltfMesh->primitives[j];
 			Assert(gltfPrimitive->indices > -1);
+
+			// indices data
+			u32 indicesAccessorIndex = gltfPrimitive->indices;
+			tinygltf::BufferView indicesGLTFBufferView = gltfBufferViews->at(gltfAccessors->at(indicesAccessorIndex).bufferView);
+			u32 indicesGLTFBufferIndex = indicesGLTFBufferView.buffer;
+			u64 indicesGLTFBufferByteOffset = indicesGLTFBufferView.byteOffset;
+			u64 indicesGLTFBufferByteLength = indicesGLTFBufferView.byteLength;
+			u16* indicesDataOffset = (u16*)(gltfModel.buffers[indicesGLTFBufferIndex].data.data() + indicesGLTFBufferByteOffset);
 			
 			// position attributes
 			Assert(gltfPrimitive->attributes.find(positionIndexKeyString) != gltfPrimitive->attributes.end());
@@ -124,20 +155,15 @@ bool Mesh::loadFromGltf(const char* file) {
 			Assert(positionAttribute.bufferIndex == normalAttribute.bufferIndex);
 			Assert(normalAttribute.numComponents == 3);
 
-			// TODO: texture 0 uv coord attribute data
-			//bool texture0AttributesAvailable = gltfPrimitive->attributes.find(texture0IndexKeyString) != gltfPrimitive->attributes.end();
-			//gltfAttributeMetadata texture0Attribute{};
-			//if (texture0AttributesAvailable) { 
-			//	texture0Attribute = populateAttributeMetadata(gltfModel, texture0IndexKeyString, gltfPrimitive);
-			//	Assert(positionAttribute.bufferIndex == texture0Attribute.bufferIndex);
-			//}
-
-			u32 indicesAccessorIndex = gltfPrimitive->indices;
-			tinygltf::BufferView indicesGLTFBufferView = gltfBufferViews->at(gltfAccessors->at(indicesAccessorIndex).bufferView);
-			u32 indicesGLTFBufferIndex = indicesGLTFBufferView.buffer;
-			u64 indicesGLTFBufferByteOffset = indicesGLTFBufferView.byteOffset;
-			u64 indicesGLTFBufferByteLength = indicesGLTFBufferView.byteLength;
-			u16* indicesDataOffset = (u16*)(gltfModel.buffers[indicesGLTFBufferIndex].data.data() + indicesGLTFBufferByteOffset);
+			// texture 0 uv coord attribute data
+			bool texture0AttributesAvailable = gltfPrimitive->attributes.find(texture0IndexKeyString) != gltfPrimitive->attributes.end();
+			gltfAttributeMetadata texture0Attribute{};
+			f32* texture0AttributeData;
+			if (texture0AttributesAvailable) { 
+				texture0Attribute = populateAttributeMetadata(gltfModel, texture0IndexKeyString, gltfPrimitive);
+				texture0AttributeData = (f32*)(gltfModel.buffers[texture0Attribute.bufferIndex].data.data() + texture0Attribute.bufferByteOffset);
+				Assert(positionAttribute.bufferIndex == texture0Attribute.bufferIndex);
+			}
 
 			Assert(gltfModel.buffers.size() > positionAttribute.bufferIndex);
 			f32* positionAttributeData = (f32*)(gltfModel.buffers[positionAttribute.bufferIndex].data.data() + positionAttribute.bufferByteOffset);
@@ -172,6 +198,16 @@ bool Mesh::loadFromGltf(const char* file) {
 				//vertex color
 				newVert.color = color;
 
+				// vertex uv
+				if (texture0AttributesAvailable) {
+					newVert.uv.x = texture0AttributeData[3 * vertIndex + 0];
+					newVert.uv.y = 1.0f - texture0AttributeData[3 * vertIndex + 1]; // TODO: is inverse uv y coord necessary?
+				}
+				else {
+					newVert.uv.x = 0.5f;
+					newVert.uv.y = 0.5f;
+				}
+
 				vertices.push_back(newVert);
 			}
 		}
@@ -180,13 +216,35 @@ bool Mesh::loadFromGltf(const char* file) {
 	return true;
 }
 
-bool Mesh::loadFromObj(const char* file, const char* materialDir)
+bool Mesh::loadFromObj(const char* fileName)
 {
+	// find directory of file
+	u64 strLength = strlen(fileName);
+	const char* dirSlash = fileName + (strLength - 1);
+	while (dirSlash != fileName) {
+		if (*dirSlash == '/') {
+			break;
+		}
+		dirSlash--;
+	}
+
+	// copy directory to new str to use as material search path
+	char materialSearchPath[256];
+	const char* copyIter = fileName;
+	u32 copyIndex = 0;
+	while (copyIter != dirSlash) {
+		materialSearchPath[copyIndex++] = *copyIter++;
+	}
+	if (dirSlash != fileName) { // we want empty string if there was no dir slash
+		materialSearchPath[copyIndex++] = '/';
+	}
+	materialSearchPath[copyIndex] = '\0';
+
 	tinyobj::ObjReaderConfig readerConfig;
-	readerConfig.mtl_search_path = materialDir;
+	readerConfig.mtl_search_path = materialSearchPath;
 
 	tinyobj::ObjReader reader;
-	if (!reader.ParseFromFile(file, readerConfig)) {
+	if (!reader.ParseFromFile(fileName, readerConfig)) {
 		if (!reader.Error().empty()) {
 			std::cerr << "TinyObjReader: " << reader.Error();
 		}
@@ -230,13 +288,17 @@ bool Mesh::loadFromObj(const char* file, const char* materialDir)
 
 				// Optional: vertex colors
 				if (!attrib.colors.empty()) {
-					newVert.color.x = attrib.colors[(3* idx.vertex_index)+0];
-					newVert.color.x = attrib.colors[(3* idx.vertex_index)+1];
-					newVert.color.x = attrib.colors[(3* idx.vertex_index)+2];
+					newVert.color.r = attrib.colors[(3* idx.vertex_index)+0];
+					newVert.color.g = attrib.colors[(3* idx.vertex_index)+1];
+					newVert.color.b = attrib.colors[(3* idx.vertex_index)+2];
 				}
 				else {
 					newVert.color = newVert.normal;
 				}
+
+				//vertex uv
+				newVert.uv.x = attrib.texcoords[2 * idx.texcoord_index + 0];
+				newVert.uv.y = 1 - attrib.texcoords[2 * idx.texcoord_index + 1]; // TODO: Is inverting uv y coordinate correct?
 
 				vertices.push_back(newVert);
 			}
@@ -247,7 +309,7 @@ bool Mesh::loadFromObj(const char* file, const char* materialDir)
 	return true;
 }
 
-void Mesh::uploadMesh(VmaAllocator allocator, DeletionQueue* deletionQueue)
+AllocatedBuffer Mesh::uploadMesh(VmaAllocator allocator)
 {
 	//allocate vertex buffer
 	VkBufferCreateInfo bufferInfo = {};
@@ -269,8 +331,5 @@ void Mesh::uploadMesh(VmaAllocator allocator, DeletionQueue* deletionQueue)
 		memcpy(data, vertices.data(), vertices.size() * sizeof(Vertex));
 	vmaUnmapMemory(allocator, vertexBuffer.vmaAllocation);
 
-	AllocatedBuffer localVertBuffer = this->vertexBuffer; // necessary to capture member variable by value if not using C++ 14
-	deletionQueue->pushFunction([=]() {
-		vmaDestroyBuffer(allocator, localVertBuffer.vkBuffer, localVertBuffer.vmaAllocation);
-	});
+	return vertexBuffer;
 }

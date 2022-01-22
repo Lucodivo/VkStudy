@@ -9,6 +9,8 @@ add_library(stb_image INTERFACE)
 add_library(tinyobjloader STATIC)
 add_library(tinygltf STATIC)
 
+add_library(spirv_reflect STATIC)
+
 target_sources(vkbootstrap PRIVATE 
     vkbootstrap/VkBootstrap.h
     vkbootstrap/VkBootstrap.cpp
@@ -32,11 +34,19 @@ target_sources(tinygltf PRIVATE
     tinygltf/tiny_gltf.h
     tinygltf/tiny_gltf.cc
 )
-
 target_include_directories(tinygltf PUBLIC 
     tinygltf
     stb_image
     )
+
+target_sources(spirv_reflect PRIVATE
+    spirv_reflect/spirv_reflect.h
+    spirv_reflect/spirv_reflect.c
+)
+target_include_directories(spirv_reflect PUBLIC 
+    spirv_reflect
+    )
+
 
 add_library(sdl2 INTERFACE)
 set(sdl2_DIR "SDL_PATH" CACHE PATH "Path to SDL2")

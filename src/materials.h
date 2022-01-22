@@ -1,12 +1,11 @@
 #pragma once
 
-#define SHADER_DIR "../shaders/"
+#define SHADER_DIR "../shaders/spv/"
 
-struct MaterialInfo {
+struct MaterialCreateInfo {
 	const char* name;
 	const char* vertFileName;
 	const char* fragFileName;
-	VkPolygonMode polygonMode;
 };
 
 struct FragmentShaderPushConstants {
@@ -21,58 +20,50 @@ const VkPushConstantRange fragmentShaderPushConstantsRange{
 	sizeof(FragmentShaderPushConstants)
 };
 
-static MaterialInfo materialNormalAsColor {
+static MaterialCreateInfo materialNormalAsColor {
 	"normalAsRGB",
-	"pn_normal_out_0.vert",
-	"in_color.frag",
-	VK_POLYGON_MODE_FILL
+	SHADER_DIR"pn_normal_out_0.vert.spv",
+	SHADER_DIR"in_color.frag.spv"
 };
 
-static MaterialInfo materialVertexColor{
+static MaterialCreateInfo materialVertexColor{
 	"vertexColor",
-	"pnc_color_out_0.vert",
-	"in_color.frag",
-	VK_POLYGON_MODE_FILL
+	SHADER_DIR"pnc_color_out_0.vert.spv",
+	SHADER_DIR"in_color.frag.spv"
 };
 
-static MaterialInfo materialDefaultLit{
+static MaterialCreateInfo materialDefaultLit{
 	"defaultLit",
-	"pnc_color_out_0.vert",
-	"default_lit.frag",
-	VK_POLYGON_MODE_FILL
+	SHADER_DIR"pnc_color_out_0.vert.spv",
+	SHADER_DIR"default_lit.frag.spv"
 };
 
-static MaterialInfo materialRedOutline {
-	"redOutline",
-	"position.vert",
-	"red.frag",
-	VK_POLYGON_MODE_LINE
-};
-
-static MaterialInfo materialRed {
+static MaterialCreateInfo materialRed {
 	"red",
-	"position.vert",
-	"red.frag",
-	VK_POLYGON_MODE_FILL
+	SHADER_DIR"position.vert.spv",
+	SHADER_DIR"red.frag.spv"
 };
 
-static MaterialInfo materialGreen {
+static MaterialCreateInfo materialGreen {
 	"green",
-	"position.vert",
-	"green.frag",
-	VK_POLYGON_MODE_FILL
+	SHADER_DIR"position.vert.spv",
+	SHADER_DIR"green.frag.spv"
 };
 
-static MaterialInfo materialBlue {
+static MaterialCreateInfo materialBlue {
 	"blue",
-	"position.vert",
-	"blue.frag",
-	VK_POLYGON_MODE_FILL
+	SHADER_DIR"position.vert.spv",
+	SHADER_DIR"blue.frag.spv"
 };
 
-static MaterialInfo materialDefaulColor{
+static MaterialCreateInfo materialDefaulColor{
 	"defaultColor",
-	"position_defaultCol.vert",
-	"in_color.frag",
-	VK_POLYGON_MODE_FILL
+	SHADER_DIR"position_defaultCol.vert.spv",
+	SHADER_DIR"in_color.frag.spv"
+};
+
+static MaterialCreateInfo materialTextured{
+	"textured",
+	SHADER_DIR"pnct_color_out_0_tex_out_1.vert.spv",
+	SHADER_DIR"textured_lit.frag.spv"
 };

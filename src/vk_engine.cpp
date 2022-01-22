@@ -636,6 +636,7 @@ void VulkanEngine::initDescriptors()
 		{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 10 },
 		{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, 10 },
 		{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 10 },
+		{ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 10 },
 	};
 
 	VkDescriptorPoolCreateInfo descriptorPoolInfo = {};
@@ -684,7 +685,6 @@ void VulkanEngine::initDescriptors()
 
 	vkCreateDescriptorSetLayout(device, &descSetCreateInfo, nullptr, &objectDescSetLayout);
 
-	// TODO: Can/Should I allocate both descriptor sets under one VkDescriptorSetAllocateInfo?
 	VkDescriptorSetAllocateInfo globalDescSetAllocInfo = {};
 	globalDescSetAllocInfo.pNext = nullptr;
 	globalDescSetAllocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
@@ -699,8 +699,8 @@ void VulkanEngine::initDescriptors()
 	objectDescSetAllocInfo.descriptorSetCount = 1;
 	objectDescSetAllocInfo.pSetLayouts = &objectDescSetLayout;
 
-	u64 paddedGPUCameraDataSize = padUniformBufferSize(sizeof(GPUCameraData));
-	u64 paddedGPUSceneDataSize = padUniformBufferSize(sizeof(GPUSceneData));
+	u64 paddedGPUCameraDataSize = vkutil::padUniformBufferSize(gpuProperties, sizeof(GPUCameraData));
+	u64 paddedGPUSceneDataSize = vkutil::padUniformBufferSize(gpuProperties, sizeof(GPUSceneData));
 	u64 globalBufferSize = FRAME_OVERLAP * (paddedGPUCameraDataSize + paddedGPUSceneDataSize);
 	globalBuffer.cameraOffset = 0;
 	globalBuffer.sceneOffset = FRAME_OVERLAP * paddedGPUCameraDataSize;
@@ -746,6 +746,14 @@ void VulkanEngine::initDescriptors()
 		vkUpdateDescriptorSets(device, ArrayCount(descSetWrites), descSetWrites, 0/*descriptorCopyCount*/, nullptr/*pDescriptorCopies*/);
 	}
 
+	// single texture descriptor set layout
+	VkDescriptorSetLayoutBinding textureBind = vkinit::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT, 0);
+
+	descSetCreateInfo.bindingCount = 1;
+	descSetCreateInfo.pBindings = &textureBind;
+
+	vkCreateDescriptorSetLayout(device, &descSetCreateInfo, nullptr, &singleTextureSetLayout);
+
 	mainDeletionQueue.pushFunction([=]() {
 		// free buffers
 		vmaDestroyBuffer(vmaAllocator, globalBuffer.buffer.vkBuffer, globalBuffer.buffer.vmaAllocation);
@@ -757,21 +765,23 @@ void VulkanEngine::initDescriptors()
 		// freeing descriptor pool frees descriptor layouts
 		vkDestroyDescriptorSetLayout(device, globalDescSetLayout, nullptr);
 		vkDestroyDescriptorSetLayout(device, objectDescSetLayout, nullptr);
+		vkDestroyDescriptorSetLayout(device, singleTextureSetLayout, nullptr);
 		vkDestroyDescriptorPool(device, descriptorPool, nullptr);
 	});
 }
 
 void VulkanEngine::initPipelines() {
-	createFragmentShaderPipeline("fragment_shader_test.frag");
+	createFragmentShaderPipeline();
 
 	for (u32 i = 0; i < ArrayCount(materialInfos); i++) {
 		createPipeline(materialInfos[i]);
 	}
 }
 
-void VulkanEngine::createFragmentShaderPipeline(const char* fragmentShader) {
-	VkShaderModule vertShader = acquireShader("hard_coded_fullscreen_quad.vert");
-	VkShaderModule fragShader = acquireShader(fragmentShader);
+void VulkanEngine::createFragmentShaderPipeline() {
+	// TODO: merge with every other materials and pipeline creation
+	VkShaderModule vertShader = acquireShader(SHADER_DIR"hard_coded_fullscreen_quad.vert.spv");
+	VkShaderModule fragShader = acquireShader(SHADER_DIR"fragment_shader_test.frag.spv");
 
 	VkPipelineLayoutCreateInfo pipelineLayoutInfo = vkinit::pipelineLayoutCreateInfo();
 	pipelineLayoutInfo.pPushConstantRanges = &fragmentShaderPushConstantsRange;
@@ -807,13 +817,14 @@ VkShaderModule VulkanEngine::acquireShader(const char* fileName) {
 		resultShader = cachedShaderModules[fileName];
 	}
 	else {
-		loadShaderModule(fileName, &resultShader);
+		resultShader = vkutil::loadShaderModule(device, fileName);
+		Assert(resultShader != VK_NULL_HANDLE);
 		cachedShaderModules[fileName] = resultShader;
 	}
 	return resultShader;
 }
 
-void VulkanEngine::createPipeline(MaterialInfo matInfo) {
+void VulkanEngine::createPipeline(MaterialCreateInfo matInfo) {
 	VkShaderModule vertShader = acquireShader(matInfo.vertFileName);
 	VkShaderModule fragShader = acquireShader(matInfo.fragFileName);
 
@@ -845,7 +856,7 @@ void VulkanEngine::createPipeline(MaterialInfo matInfo) {
 	pipelineBuilder.viewport.maxDepth = 1.0f;
 	pipelineBuilder.scissor.offset = { 0, 0 };
 	pipelineBuilder.scissor.extent = windowExtent;
-	pipelineBuilder.rasterizer = vkinit::rasterizationStateCreateInfo(matInfo.polygonMode);
+	pipelineBuilder.rasterizer = vkinit::rasterizationStateCreateInfo(VK_POLYGON_MODE_FILL);
 	pipelineBuilder.multisampling = vkinit::multisamplingStateCreateInfo();
 	pipelineBuilder.colorBlendAttachment = vkinit::colorBlendAttachmentState();
 	pipelineBuilder.depthStencil = vkinit::depthStencilCreateInfo(true, true, VK_COMPARE_OP_LESS_OR_EQUAL);
@@ -855,8 +866,8 @@ void VulkanEngine::createPipeline(MaterialInfo matInfo) {
 	VertexInputDescription vertexDescription = Vertex::getVertexDescriptions();
 	pipelineBuilder.vertexInputInfo.pVertexAttributeDescriptions = vertexDescription.attributes.data();
 	pipelineBuilder.vertexInputInfo.vertexAttributeDescriptionCount = (u32)vertexDescription.attributes.size();
-	pipelineBuilder.vertexInputInfo.pVertexBindingDescriptions = vertexDescription.bindings.data();
-	pipelineBuilder.vertexInputInfo.vertexBindingDescriptionCount = (u32)vertexDescription.bindings.size();
+	pipelineBuilder.vertexInputInfo.pVertexBindingDescriptions = &vertexDescription.bindingDesc;
+	pipelineBuilder.vertexInputInfo.vertexBindingDescriptionCount = 1;
 
 	VkPipeline pipeline = pipelineBuilder.buildPipeline(device, renderPass);
 
@@ -894,10 +905,6 @@ void VulkanEngine::initScene()
 		renderables.push_back(environmentObject);
 	}
 
-	// TODO: sort objects by material to minimize binding pipelines
-	//std::sort(renderables.begin(), renderables.end(), [](const RenderObject& a, const RenderObject& b) {
-	//	return a.material->pipeline > b.material->pipeline;
-	//});
 }
 
 void VulkanEngine::initCamera()
@@ -909,32 +916,40 @@ void VulkanEngine::initCamera()
 
 void VulkanEngine::loadMeshes()
 {
-	Mesh triangleMesh = {};
-	triangleMesh.vertices.resize(3);
-	triangleMesh.vertices[0].position = { 1.f, 1.f, 0.0f };
-	triangleMesh.vertices[1].position = { -1.f, 1.f, 0.0f };
-	triangleMesh.vertices[2].position = { 0.f,-1.f, 0.0f };
-	triangleMesh.vertices[0].normal = { 0.f, 1.f, 0.0f };
-	triangleMesh.vertices[1].normal = { 0.f, 1.f, 0.0f };
-	triangleMesh.vertices[2].normal = { 0.f, 1.f, 0.0f };
-	triangleMesh.uploadMesh(vmaAllocator, &mainDeletionQueue);
-	meshes["triangle"] = triangleMesh;
+	struct ModelData {
+		const char* modelFile;
+		const char* meshName;
+	} const modelData[] = {
+		{
+			"../assets/cube.glb",
+			"cube"
+		},
+		{
+			"../assets/mr_saturn.glb",
+			"mrSaturn"
+		},
+		{
+			"../assets/lost_empire.obj",
+			"empire"
+		},
+	};
 
-	//Mesh monkeyMesh = {};
-	//monkeyMesh.loadFromObj("../assets/monkey_smooth.obj", "../assets/");
-	//monkeyMesh.uploadMesh(allocator, mainDeletionQueue);
-	//meshes["monkey"] = monkeyMesh;
+	for (u32 i = 0; i < ArrayCount(modelData); i++) {
+		const ModelData& model = modelData[i];
+		Mesh mesh{};
+		mesh.loadFromFile(model.modelFile);
+		mesh.uploadMesh(vmaAllocator);
+		meshes[model.meshName] = mesh;
+	}
 
-	Mesh cubeMesh = {};
-	cubeMesh.loadFromGltf("../assets/cube.glb");
-	cubeMesh.uploadMesh(vmaAllocator, &mainDeletionQueue);
-	meshes["cube"] = cubeMesh;
-
-	Mesh mrSaturnMesh = {};
-	mrSaturnMesh.loadFromGltf("../assets/mr_saturn.glb");
-	mrSaturnMesh.uploadMesh(vmaAllocator, &mainDeletionQueue);
-	meshes["mrSaturn"] = mrSaturnMesh;
-
+	mainDeletionQueue.pushFunction([=]() {
+		for (u32 i = 0; i < ArrayCount(modelData); i++) {
+			const ModelData& model = modelData[i];
+			Mesh mesh = meshes[model.meshName];
+			meshes.erase(model.meshName);
+			vmaDestroyBuffer(vmaAllocator, mesh.vertexBuffer.vkBuffer, mesh.vertexBuffer.vmaAllocation);
+		}
+	});
 }
 
 void VulkanEngine::uploadMesh(Mesh& mesh)
@@ -1117,12 +1132,12 @@ void VulkanEngine::drawObjects(VkCommandBuffer cmd, RenderObject* firstObject, u
 		int frameIndex = frameNumber % FRAME_OVERLAP;
 		// copy camera data
 		char* cameraPtr = (globalDataBufferPtr + globalBuffer.cameraOffset);
-		u64 cameraDataOffset = (u32)padUniformBufferSize(sizeof(GPUCameraData)) * frameIndex;
+		u64 cameraDataOffset = (u32)vkutil::padUniformBufferSize(gpuProperties, sizeof(GPUCameraData)) * frameIndex;
 		cameraPtr += cameraDataOffset;
 		memcpy(cameraPtr, &cameraData, sizeof(GPUCameraData));
 		// copy scene data
 		char* scenePtr = (globalDataBufferPtr + globalBuffer.sceneOffset);
-		u64 sceneDataOffset = (u32)padUniformBufferSize(sizeof(GPUSceneData)) * frameIndex;
+		u64 sceneDataOffset = (u32)vkutil::padUniformBufferSize(gpuProperties, sizeof(GPUSceneData)) * frameIndex;
 		scenePtr += sceneDataOffset;
 		memcpy(scenePtr, &sceneData, sizeof(GPUSceneData));
 		globalDataBufferPtr = nullptr, cameraPtr = nullptr, scenePtr = nullptr;
@@ -1230,42 +1245,4 @@ void VulkanEngine::renderImgui(VkCommandBuffer cmd) {
 
 	// Record dear imgui primitives into command buffer
 	ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), cmd);
-}
-
-void VulkanEngine::loadShaderModule(std::string filePath, VkShaderModule* outShaderModule)
-{
-	//open the file. With cursor at the end
-	filePath = SHADER_DIR + filePath + ".spv";
-	std::ifstream file(filePath.c_str(), std::ios::ate | std::ios::binary);
-
-	Assert(file.is_open());
-	if (!file.is_open()) {
-		std::cout << "Could not open shader file: " << filePath << std::endl;
-	}
-
-	//find what the size of the file is by looking up the location of the cursor
-	u64 fileSize = (u64)file.tellg();
-
-	//spirv expects the buffer to be on uint32
-	std::vector<u32> buffer(fileSize / sizeof(u32));
-
-	//put file cursor at beginning
-	file.seekg(0);
-	file.read((char*)buffer.data(), fileSize);
-	file.close();
-
-	VkShaderModuleCreateInfo createInfo = {};
-	createInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
-	createInfo.pNext = nullptr;
-	createInfo.codeSize = buffer.size() * sizeof(u32);
-	createInfo.pCode = buffer.data();
-
-	//check that the creation goes well
-	VkShaderModule shaderModule;
-	if (vkCreateShaderModule(device, &createInfo, nullptr, &shaderModule) != VK_SUCCESS) {
-		std::cout << "Opened file but couldn't create shader: " << filePath << std::endl;
-	}
-
-	std::cout << "Successfully created shader: " << filePath << std::endl;
-	*outShaderModule = shaderModule;
 }

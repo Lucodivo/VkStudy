@@ -17,6 +17,8 @@
 #include <tiny_obj_loader.h>
 #include <tiny_gltf.h>
 
+#include <spirv_reflect.h>
+
 #include <glm/gtx/transform.hpp>
 #include <glm/glm.hpp>
 #include <glm/vec3.hpp>

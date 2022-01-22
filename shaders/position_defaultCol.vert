@@ -1,9 +1,11 @@
 #version 460
 
 layout (location = 0) in vec3 vPosition;
-// TODO: Remove the following two lines. Currently just to stop validation layer from complaining
+
+// TODO: Remove the following lines. Currently just to stop validation layer from complaining
 layout (location = 1) in vec3 butts;
 layout (location = 2) in vec3 butts2;
+layout (location = 3) in vec3 butts3;
 
 layout (location = 0) out vec3 outColor;
 

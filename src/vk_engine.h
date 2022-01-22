@@ -9,6 +9,7 @@ const u32 FRAME_OVERLAP = 2;
 #define DEFAULT_WINDOW_HEIGHT 1080
 
 struct Material {
+	VkDescriptorSet textureSet{ VK_NULL_HANDLE }; //texture defaulted to null
 	VkPipeline pipeline;
 	VkPipelineLayout pipelineLayout;
 };
@@ -114,6 +115,7 @@ public:
 
 	VkDescriptorSetLayout globalDescSetLayout;
 	VkDescriptorSetLayout objectDescSetLayout;
+	VkDescriptorSetLayout singleTextureSetLayout;
 	VkDescriptorPool descriptorPool;
 
 	VkDescriptorSet globalDescriptorSet;
@@ -132,9 +134,10 @@ public:
 		f32 mouseDeltaX, mouseDeltaY;
 	} input = {};
 
-	MaterialInfo materialInfos[2] = {
+	MaterialCreateInfo materialInfos[3] = {
 		materialDefaultLit,
-		materialDefaulColor
+		materialDefaulColor,
+		materialTextured
 	};
 
 	UploadContext uploadContext;
@@ -154,9 +157,9 @@ private:
 	void initFramebuffers();
 	void initSyncStructures();
 	void initDescriptors();
-	void createPipeline(MaterialInfo matInfo);
+	void createPipeline(MaterialCreateInfo matInfo);
 	void initPipelines();
-	void createFragmentShaderPipeline(const char* fragmentShader);
+	void createFragmentShaderPipeline();
 
 	void processInput();
 
@@ -168,7 +171,6 @@ private:
 	void cleanupSwapChain();
 	void recreateSwapChain();
 
-	void loadShaderModule(std::string filePath, VkShaderModule* outShaderModule);
 	VkShaderModule acquireShader(const char* fileName);
 
 	void loadMeshes();
@@ -184,8 +186,5 @@ private:
 	void startImguiFrame();
 	void renderImgui(VkCommandBuffer cmd);
 
-	void update();
 	FrameData& getCurrentFrame();
-
-	u64 padUniformBufferSize(u64 originalSize);
 };

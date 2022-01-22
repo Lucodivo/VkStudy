@@ -63,3 +63,28 @@ u64 vkutil::padUniformBufferSize(const VkPhysicalDeviceProperties& gpuProperties
 	}
 	return alignedSize;
 }
+
+VkShaderModule vkutil::loadShaderModule(VkDevice device, const char* filePath)
+{
+	std::vector<char> buffer;
+	readFile(filePath, buffer);
+
+	// TODO: Is this necessary or will it always just be a multiple of 4?
+	u64 alignedSize = ((buffer.size() + (4 - 1)) / 4) * 4;
+	buffer.resize(alignedSize); // add extra bytes if necessary
+
+	VkShaderModuleCreateInfo createInfo = {};
+	createInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+	createInfo.pNext = nullptr;
+	createInfo.codeSize = alignedSize; // must be a multiple of 4
+	createInfo.pCode = (u32*)(buffer.data()); // Vulkan expects SPIR-V to be in u32 array
+
+	//check that the creation goes well
+	VkShaderModule shaderModule = VK_NULL_HANDLE;
+	if (vkCreateShaderModule(device, &createInfo, nullptr, &shaderModule) != VK_SUCCESS) {
+		std::cout << "Opened file but couldn't create shader: " << filePath << std::endl;
+	}
+
+	std::cout << "Successfully created shader: " << filePath << std::endl;
+	return shaderModule;
+}
