@@ -5,7 +5,7 @@
 #include <unordered_map>
 
 struct DescriptorSetLayoutData {
-  uint32_t setNumber;
+  uint32_t setIndex;
   std::vector<VkDescriptorSetLayoutBinding> bindings;
 
   VkDescriptorSetLayoutCreateInfo descriptorSetLayoutCreateInfo() {
@@ -45,13 +45,14 @@ struct ReflectData {
   std::vector<SpvReflectInterfaceVariable*> outputVars;
 };
 
-void getDescriptorSetLayoutData(const SpvReflectShaderModule& module, const ReflectData& data, std::vector <DescriptorSetLayoutData>& outData) {
+void getDescriptorSetLayoutData(const SpvReflectShaderModule& module, const ReflectData& data, std::vector<DescriptorSetLayoutData>& outData) {
   u64 descSetCount = data.reflectDescSets.size();
-  outData.resize(descSetCount, DescriptorSetLayoutData{});
+  outData.resize(descSetCount, {});
   for (u64 setIndex = 0; setIndex < descSetCount; ++setIndex) {
     const SpvReflectDescriptorSet& reflectDescSet = *(data.reflectDescSets[setIndex]);
     DescriptorSetLayoutData& layout = outData[setIndex];
 
+    layout.setIndex = reflectDescSet.set;
     layout.bindings.resize(reflectDescSet.binding_count);
     for (u32 bindingIndex = 0; bindingIndex < reflectDescSet.binding_count; ++bindingIndex) {
       const SpvReflectDescriptorBinding& reflectBinding = *(reflectDescSet.bindings[bindingIndex]);
@@ -68,8 +69,21 @@ void getDescriptorSetLayoutData(const SpvReflectShaderModule& module, const Refl
       }
       layoutBinding.stageFlags = static_cast<VkShaderStageFlagBits>(module.shader_stage);
     }
-    layout.setNumber = reflectDescSet.set;
+
+    // sort each set by desc binding index
+    std::sort(layout.bindings.begin(), layout.bindings.end(),
+      [](const VkDescriptorSetLayoutBinding& a, const VkDescriptorSetLayoutBinding& b) {
+        assert(a.binding != b.binding); // bindings should never be the same
+        return a.binding < b.binding;
+      });
   }
+
+  // sort the sets by their set index
+  std::sort(outData.begin(), outData.end(),
+    [](const DescriptorSetLayoutData& a, const DescriptorSetLayoutData& b) {
+      assert(a.setIndex != b.setIndex); // There should be no set number duplicates
+      return a.setIndex < b.setIndex;
+    });
 }
 
 void getReflectData(const SpvReflectShaderModule module, ReflectData& outData) {
@@ -97,83 +111,92 @@ void getReflectData(const SpvReflectShaderModule module, ReflectData& outData) {
   assert(result == SPV_REFLECT_RESULT_SUCCESS);
 }
 
-// TODO: THIS IS THE WORST FUNCTION I HAVE EVER WRITTEN. 
-// CONSIDER REFACTORING IMMEDIATELY
-void mergeDescSetReflectionData(std::vector<DescriptorSetLayoutData>& setsA, std::vector<DescriptorSetLayoutData>& setsB, std::vector<DescriptorSetLayoutData>& out) {
-  // concatenate both sets to iterate through single list
-  out.reserve(setsA.size() + setsB.size());
-  out.insert(out.end(), setsA.begin(), setsA.end());
-  out.insert(out.end(), setsB.begin(), setsB.end());
+// NOTE: This function expects that the DescriptorSetLayoutData is sorted increasingly by the set index
+// NOTE: It also assumes that the bindings within the sets are sorted increasingle by the binding index
+void mergeDescSetReflectionData(std::vector<DescriptorSetLayoutData>* dataA, std::vector<DescriptorSetLayoutData>* dataB, std::vector<DescriptorSetLayoutData>& out) {
 
-  // A hash function used to hash a pair of any kind
-  struct hash_pair {
-    size_t operator()(const std::pair<u32, u32>& pair) const
-    {
-      if (pair.first != pair.first) {
-        return pair.first < pair.first;
-      }
-      else {
-        return pair.second < pair.second;
-      }
-    }
-  };
-
-  // Merge all bindings with unique <set index, binding index> pair
-  std::unordered_map<std::pair<u32, u32>, VkDescriptorSetLayoutBinding, hash_pair> setBindings;
+  u32 setsIndexA = 0;
+  u32 setsIndexB = 0;
+  u32 setsACount = dataA->size();
+  u32 setsBCount = dataB->size();
   
-  for (const DescriptorSetLayoutData& layoutData : out) {
-    for (const VkDescriptorSetLayoutBinding& binding : layoutData.bindings) {
-      std::pair<u32, u32> setBindingKey(layoutData.setNumber, binding.binding);
-      if (setBindings.find(setBindingKey) == setBindings.end()) { // not found
-        VkDescriptorSetLayoutBinding newBinding = vkinit::descriptorSetLayoutBinding(
-          binding.descriptorType,
-          binding.stageFlags,
-          binding.binding);
-        setBindings[setBindingKey] = newBinding;
-      }
-      else { // found
-        VkDescriptorSetLayoutBinding& updateBinding = setBindings[setBindingKey];
-        assert(updateBinding.descriptorType == binding.descriptorType); // ensure there is no conflicted opinions of binding descriptor type
-        updateBinding.stageFlags |= binding.stageFlags;
-      }
+  while (setsIndexA < setsACount && setsIndexB < setsBCount) {
+    DescriptorSetLayoutData& setLayoutA = dataA->at(setsIndexA);
+    DescriptorSetLayoutData& setLayoutB = dataB->at(setsIndexB);
+    if (setLayoutA.setIndex < setLayoutB.setIndex) {
+      // empty set A into output
+      out.push_back(setLayoutA);
+      ++setsIndexA;
     }
-  }
-  
-  // Group all bindings under the same set index
-  std::unordered_map<u32, DescriptorSetLayoutData> sets;
-  for (std::pair<std::pair<u32, u32>, VkDescriptorSetLayoutBinding> setBinding : setBindings) {
-    u32 setIndex = setBinding.first.first;
-    VkDescriptorSetLayoutBinding& descSetLayoutBinding = setBinding.second;
-    if (sets.find(setIndex) == sets.end()) { // not found
-      DescriptorSetLayoutData newSetLayoutData{};
-      newSetLayoutData.setNumber = setIndex;
-      newSetLayoutData.bindings.push_back(descSetLayoutBinding);
-      sets[setIndex] = newSetLayoutData;
+    else if (setLayoutB.setIndex < setLayoutA.setIndex) {
+      // empty set B into output
+      out.push_back(setLayoutB);
+      ++setsIndexB;
     }
-    else { // found
-      DescriptorSetLayoutData& updateSetLayoutData = sets[setIndex];
-      updateSetLayoutData.bindings.push_back(descSetLayoutBinding);
+    else {
+      // resolve any set/binding descrepancies
+      out.emplace_back();
+      DescriptorSetLayoutData& setLayout = out.back();
+      setLayout.setIndex = setLayoutA.setIndex;
+
+      std::vector<VkDescriptorSetLayoutBinding>& bindings = setLayout.bindings;
+      std::vector<VkDescriptorSetLayoutBinding>& bindingsA = setLayoutA.bindings;
+      std::vector<VkDescriptorSetLayoutBinding>& bindingsB = setLayoutB.bindings;
+
+      u32 bindingsIndexA = 0;
+      u32 bindingsIndexB = 0;
+      u32 bindingsACount = bindingsA.size();
+      u32 bindingsBCount = bindingsB.size();
+
+      while (bindingsIndexA < bindingsACount && bindingsIndexB < bindingsBCount) {
+        VkDescriptorSetLayoutBinding& bindingA = bindingsA[bindingsIndexA];
+        VkDescriptorSetLayoutBinding& bindingB = bindingsB[bindingsIndexB];
+        if (bindingA.binding < bindingB.binding) {
+          // empty set A into output
+          bindings.push_back(bindingA);
+          ++bindingsIndexA;
+        }
+        else if (bindingB.binding < bindingA.binding) {
+          // empty set B into output
+          bindings.push_back(bindingB);
+          ++bindingsIndexB;
+        }
+        else {
+          // resolve any set/binding descrepancies
+          VkDescriptorSetLayoutBinding binding = bindingA;
+          assert(bindingA.descriptorType == bindingB.descriptorType); // ensure there is no conflicted opinions of binding descriptor type
+          binding.stageFlags |= bindingB.stageFlags;
+          bindings.push_back(binding);
+
+          ++bindingsIndexA;
+          ++bindingsIndexB;
+        }
+      }
+
+      if (bindingsIndexA < bindingsACount) {
+        // empty set A into output
+        bindings.insert(bindings.end(), bindingsA.begin() + bindingsIndexA, bindingsA.end());
+      }
+
+      if (bindingsIndexB < bindingsBCount) {
+        // empty set B into output
+        bindings.insert(bindings.end(), bindingsB.begin() + bindingsIndexB, bindingsB.end());
+      }
+
+      ++setsIndexA;
+      ++setsIndexB;
     }
   }
 
-  out.clear();
-  for (std::pair<u32, DescriptorSetLayoutData> set : sets) {
-    DescriptorSetLayoutData descSetLayoutData = set.second;
-    // sort by binding index
-    std::sort(descSetLayoutData.bindings.begin(), descSetLayoutData.bindings.end(),
-      [](const VkDescriptorSetLayoutBinding& a, const VkDescriptorSetLayoutBinding& b) {
-        assert(a.binding != b.binding); // bindings should never be the same
-        return a.binding < b.binding;
-      });
-    out.push_back(descSetLayoutData);
+  if (setsIndexA < setsACount) {
+    // empty set A into output
+    out.insert(out.end(), dataA->begin() + setsIndexA, dataA->end());
   }
 
-  // sort by set index
-  std::sort(out.begin(), out.end(),
-    [](const DescriptorSetLayoutData& a, const DescriptorSetLayoutData& b) {
-      assert(a.setNumber != b.setNumber); // bindings should never be the same
-      return a.setNumber < b.setNumber;
-    });
+  if (setsIndexB < setsBCount) {
+    // empty set B into output
+    out.insert(out.end(), dataB->begin() + setsIndexB, dataB->end());
+  }
 }
 
 int main(int argn, char** argv)
@@ -198,7 +221,9 @@ int main(int argn, char** argv)
   std::vector<DescriptorSetLayoutData> vertDescSets, fragDescSets;
   getDescriptorSetLayoutData(vertModule, vertReflectData, vertDescSets);
   getDescriptorSetLayoutData(fragModule, fragReflectData, fragDescSets);
-  // TODO: merge descriptor set layouts
+
+  mergeDescSetReflectionData(&vertDescSets, &fragDescSets, shaderMetaData.descSetLayouts);
+
   // TODO: a real application would be merged with similar structures from other shader stages and/or pipelines
   // to create a VkPipelineLayout.
 
@@ -253,9 +278,6 @@ int main(int argn, char** argv)
 
   // Fragment Input Variables
   Assert(fragModule.shader_stage == SPV_REFLECT_SHADER_STAGE_FRAGMENT_BIT);
-  
-  // TODO: fuse descriptor set reflection data together
-  mergeDescSetReflectionData(vertDescSets, fragDescSets, shaderMetaData.descSetLayouts);
 
   spvReflectDestroyShaderModule(&vertModule);
   spvReflectDestroyShaderModule(&fragModule);
