@@ -14,6 +14,63 @@ struct FragmentShaderPushConstants {
 	f32 resolutionY;
 };
 
+struct DescriptorSetLayoutData {
+	uint32_t setIndex;
+	std::vector<VkDescriptorSetLayoutBinding> bindings;
+	VkDescriptorSetLayoutCreateInfo descriptorSetLayoutCreateInfo();
+};
+
+struct ShaderInputMetadata {
+	VertexInputDescription vertexInputDesc;
+	VkPipelineVertexInputStateCreateInfo vertexInputStateCreateInfo();
+};
+
+struct VertexShaderMetadata {
+  VkShaderModule module;
+  std::vector<DescriptorSetLayoutData> descSetLayouts;
+  ShaderInputMetadata input;
+};
+
+struct FragmentShaderMetadata {
+  VkShaderModule module;
+  std::vector<DescriptorSetLayoutData> descSetLayouts;
+};
+
+struct ShaderMetadata {
+	VkShaderModule vertModule;
+  VkShaderModule fragModule;
+  std::vector<DescriptorSetLayoutData> descSetLayouts;
+  ShaderInputMetadata input;
+};
+
+class MaterialManager {
+public:
+	std::unordered_map<std::string, VertexShaderMetadata> cachedVertShaders;
+  std::unordered_map<std::string, FragmentShaderMetadata> cachedFragShaders;
+  std::unordered_map<std::string, ShaderMetadata> cachedShaders;
+	void destroyAll(VkDevice device);
+
+	void loadShaderMetadata(VkDevice device, const char* vertFileName, const char* fragFileName, ShaderMetadata& out);
+
+private:
+
+  struct ReflectData {
+    std::vector<SpvReflectDescriptorSet*> reflectDescSets;
+    std::vector<SpvReflectInterfaceVariable*> inputVars;
+    std::vector<SpvReflectInterfaceVariable*> outputVars;
+  };
+
+	void mergeDescSetReflectionData(const std::vector<DescriptorSetLayoutData>& dataA,
+																	const std::vector<DescriptorSetLayoutData>& dataB,
+																	std::vector<DescriptorSetLayoutData>& out);
+	void getDescriptorSetLayoutData(const SpvReflectShaderModule& module, 
+																	const ReflectData& data, 
+																	std::vector<DescriptorSetLayoutData>& outData);
+	void getReflectData(const SpvReflectShaderModule module, ReflectData& outData);
+
+  void mergeReflectionData(const VertexShaderMetadata& vertShader, const FragmentShaderMetadata& fragShader, ShaderMetadata& outShader);
+};
+
 const VkPushConstantRange fragmentShaderPushConstantsRange{
 	VK_SHADER_STAGE_FRAGMENT_BIT,
 	0,

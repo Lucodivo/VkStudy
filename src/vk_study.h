@@ -3,6 +3,7 @@
 #include <vector>
 #include <chrono>
 #include <functional>
+#include <unordered_map>
 
 #include <stdint.h>
 
@@ -53,3 +54,4 @@
 #include "vk_mesh.cpp"
 #include "vk_pipeline_builder.cpp"
 #include "vk_engine.cpp"
+#include "material.cpp"
