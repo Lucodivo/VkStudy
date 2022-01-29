@@ -1,7 +1,6 @@
 #version 460
 
-layout (location = 0) in vec3 inColor;
-layout (location = 1) in vec2 texCoord;
+layout (location = 0) in vec2 texCoord;
 
 layout (location = 0) out vec4 outFragColor;
 
@@ -18,6 +17,7 @@ layout(set = 0, binding = 1) uniform  SceneData {
 
 void main()
 {
-	vec3 color = texture(tex1,texCoord).xyz;
-	outFragColor = vec4(color,1.0f);
+	vec4 color = texture(tex1, texCoord);
+	if(color.a < 0.01) { discard; }
+	outFragColor = color;
 }

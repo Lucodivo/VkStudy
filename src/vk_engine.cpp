@@ -1,3 +1,6 @@
+
+#include "vk_engine.h"
+
 #define DEFAULT_NANOSEC_TIMEOUT 1'000'000'000
 
 #define PRESENT_MODE VK_PRESENT_MODE_FIFO_KHR
@@ -29,6 +32,7 @@ void VulkanEngine::init()
 	initSyncStructures();
 	initDescriptors();
 	initPipelines();
+  loadImages();
 	loadMeshes();
 	initScene();
 
@@ -45,6 +49,14 @@ void VulkanEngine::cleanup()
 	{
 		cleanupSwapChain();
 		mainDeletionQueue.flush();
+
+    for(std::pair<std::string, Texture> pair : loadedTextures) {
+      const Texture& texture = pair.second;
+      vkDestroyImageView(device, texture.imageView, nullptr);
+      vmaDestroyImage(vmaAllocator, texture.image.vkImage, texture.image.vmaAllocation);
+    }
+    loadedTextures.clear();
+
 		vmaDestroyAllocator(vmaAllocator);
 		materialManager.destroyAll(device);
 
@@ -530,6 +542,7 @@ void VulkanEngine::initCommands()
 void VulkanEngine::initDefaultRenderpass()
 {
 	VkAttachmentDescription colorAttachment = {};
+  colorAttachment.flags = 0;
 	colorAttachment.format = swapchainImageFormat;
 	colorAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
 	colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
@@ -538,13 +551,6 @@ void VulkanEngine::initDefaultRenderpass()
 	colorAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
 	colorAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 	colorAttachment.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-
-	// Renderpasses hold VkAttachmentDescriptions but subpasses hold VkAttachmentReferences to those descriptions,
-	// this allows two subpasses to simply reference the same attachment instead of holding the entire description
-	VkAttachmentReference colorAttachmentRef = {};
-	//attachment number will index into the pAttachments array in the parent renderpass
-	colorAttachmentRef.attachment = 0;
-	colorAttachmentRef.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 
 	VkAttachmentDescription depthAttachment = {};
 	depthAttachment.flags = 0;
@@ -557,18 +563,25 @@ void VulkanEngine::initDefaultRenderpass()
 	depthAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 	depthAttachment.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
 
-	VkAttachmentReference depthAttachmentRef = {};
-	depthAttachmentRef.attachment = 1;
-	depthAttachmentRef.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-
-	//we are going to create 1 subpass, which is the minimum you can do
-	VkSubpassDescription subpass = {};
-	subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
-	subpass.colorAttachmentCount = 1;
-	subpass.pColorAttachments = &colorAttachmentRef;
-	subpass.pDepthStencilAttachment = &depthAttachmentRef;
-
 	VkAttachmentDescription attachmentDescriptions[] = { colorAttachment, depthAttachment };
+
+  // Renderpasses hold VkAttachmentDescriptions but subpasses hold VkAttachmentReferences to those descriptions,
+  // this allows two subpasses to simply reference the same attachment instead of holding the entire description
+  VkAttachmentReference colorAttachmentRef = {};
+  //attachment number will index into the pAttachments array in the parent renderpass
+  colorAttachmentRef.attachment = 0;
+  colorAttachmentRef.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+
+  VkAttachmentReference depthAttachmentRef = {};
+  depthAttachmentRef.attachment = 1;
+  depthAttachmentRef.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+
+  //we are going to create 1 subpass, which is the minimum you can do
+  VkSubpassDescription subpass = {};
+  subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+  subpass.colorAttachmentCount = 1;
+  subpass.pColorAttachments = &colorAttachmentRef;
+  subpass.pDepthStencilAttachment = &depthAttachmentRef;
 
 	VkRenderPassCreateInfo renderPassInfo = {};
 	renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
@@ -817,7 +830,7 @@ void VulkanEngine::createPipeline(MaterialCreateInfo matInfo) {
 	VkPipelineLayoutCreateInfo pipelineLayoutInfo = vkinit::pipelineLayoutCreateInfo();
 	pipelineLayoutInfo.pushConstantRangeCount = 0;
 	pipelineLayoutInfo.pPushConstantRanges = nullptr;
-	VkDescriptorSetLayout descSets[] = { globalDescSetLayout, objectDescSetLayout };
+	VkDescriptorSetLayout descSets[] = { globalDescSetLayout, objectDescSetLayout, singleTextureSetLayout };
 	pipelineLayoutInfo.setLayoutCount = ArrayCount(descSets);
 	pipelineLayoutInfo.pSetLayouts = descSets;
 
@@ -859,6 +872,7 @@ void VulkanEngine::createPipeline(MaterialCreateInfo matInfo) {
 
 void VulkanEngine::initScene()
 {
+  /*
 	RenderObject focusObject;
 	focusObject.mesh = getMesh("mrSaturn");
 	focusObject.materialName = materialDefaultLit.name;
@@ -887,7 +901,57 @@ void VulkanEngine::initScene()
 		environmentObject.defaultColor = glm::vec4(color, 1.0f);
 		renderables.push_back(environmentObject);
 	}
+   */
 
+
+	RenderObject focusObject;
+	focusObject.mesh = getMesh("empire");
+	focusObject.materialName = materialTextured.name;
+	focusObject.material = getMaterial(focusObject.materialName);
+  focusObject.defaultColor = glm::vec4(50.0f, 0.0f, 0.0f, 1.0f);
+
+  f32 focusScale = 1.0f;
+  glm::mat4 focusScaleMat = glm::scale(glm::mat4{ 1.0 }, glm::vec3(focusScale, focusScale, focusScale));
+  glm::mat4 focusRotationMat = glm::rotate(RadiansPerDegree * 90.0f, glm::vec3(1.0f, 0.0f, 0.0f));
+  glm::mat4 focusTranslationMat = glm::translate(glm::mat4{ 1.0 }, glm::vec3(0.0f, 0.0f, 0.0f));
+  glm::mat4 focusTransform = focusTranslationMat * focusRotationMat * focusScaleMat;
+  focusObject.modelMatrix = focusTransform;
+
+  VkSamplerCreateInfo samplerInfo = vkinit::samplerCreateInfo(VK_FILTER_NEAREST);
+
+  VkSampler blockySampler;
+  vkCreateSampler(device, &samplerInfo, nullptr, &blockySampler);
+
+  //allocate the descriptor set for single-texture to use on the material
+  VkDescriptorSetAllocateInfo allocInfo = {};
+  allocInfo.pNext = nullptr;
+  allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+  allocInfo.descriptorPool = descriptorPool;
+  allocInfo.descriptorSetCount = 1;
+  allocInfo.pSetLayouts = &singleTextureSetLayout;
+
+  vkAllocateDescriptorSets(device, &allocInfo, &focusObject.textureSet);
+
+  //write to the descriptor set so that it points to our empire_diffuse texture
+  VkDescriptorImageInfo imageBufferInfo;
+  imageBufferInfo.sampler = blockySampler;
+  imageBufferInfo.imageView = loadedTextures["empire_diffuse"].imageView;
+  imageBufferInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+
+  VkWriteDescriptorSet texture = vkinit::writeDescriptorImage(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, focusObject.textureSet, &imageBufferInfo, 0);
+
+  vkUpdateDescriptorSets(device, 1, &texture, 0, nullptr);
+
+	renderables.push_back(focusObject);
+
+	// TODO: sort objects by material to minimize binding pipelines
+	//std::sort(renderables.begin(), renderables.end(), [](const RenderObject& a, const RenderObject& b) {
+	//	return a.material->pipeline > b.material->pipeline;
+	//});
+
+  mainDeletionQueue.pushFunction([=]() {
+    vkDestroySampler(device, blockySampler, nullptr);
+  });
 }
 
 void VulkanEngine::initCamera()
@@ -1170,12 +1234,30 @@ void VulkanEngine::drawObjects(VkCommandBuffer cmd, RenderObject* firstObject, u
 			// Or if the dynamic uniform buffer offset needs to be updated
 			u32 dynamicUniformOffsets[] = { (u32)cameraDataOffset, (u32)sceneDataOffset };
 
-			VkDescriptorSet descSets[] = { globalDescriptorSet, frame.objectDescriptorSet };
-
-			// vkCmdBindDescriptorSets causes the sets numbered [firstSet, firstSet+descriptorSetCount-1] to use the binding information stored in pDescriptorSets[0..descriptorSetCount-1]
-			// dynamic uniform offsets must be provided for every dynamic uniform buffer descriptor in the descriptor set(s)
-			// the dynamic offsets are ordered based firstly on the order of the descriptor set array and then on their binding index within that descriptor set
-			vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, object.material->pipelineLayout, 0 /*first set*/, ArrayCount(descSets), descSets, ArrayCount(dynamicUniformOffsets), dynamicUniformOffsets);
+      if(object.textureSet == VK_NULL_HANDLE) {
+        VkDescriptorSet descSets[] = { globalDescriptorSet, frame.objectDescriptorSet };
+        // vkCmdBindDescriptorSets causes the sets numbered [firstSet, firstSet+descriptorSetCount-1] to use the binding information stored in pDescriptorSets[0..descriptorSetCount-1]
+        // dynamic uniform offsets must be provided for every dynamic uniform buffer descriptor in the descriptor set(s)
+        // the dynamic offsets are ordered based firstly on the order of the descriptor set array and then on their binding index within that descriptor set
+        vkCmdBindDescriptorSets(cmd,
+                                VK_PIPELINE_BIND_POINT_GRAPHICS,
+                                object.material->pipelineLayout,
+                                0 /*first set*/,
+                                ArrayCount(descSets),
+                                descSets,
+                                ArrayCount(dynamicUniformOffsets),
+                                dynamicUniformOffsets);
+      } else {
+        VkDescriptorSet descSetsWithTex[] = { globalDescriptorSet, frame.objectDescriptorSet, object.textureSet };
+        vkCmdBindDescriptorSets(cmd,
+                                VK_PIPELINE_BIND_POINT_GRAPHICS,
+                                object.material->pipelineLayout,
+                                0 /*first set*/,
+                                ArrayCount(descSetsWithTex),
+                                descSetsWithTex,
+                                ArrayCount(dynamicUniformOffsets),
+                                dynamicUniformOffsets);
+      }
 		}
 
 		//only bind the mesh if it's a different one from last bind
@@ -1228,4 +1310,16 @@ void VulkanEngine::renderImgui(VkCommandBuffer cmd) {
 
 	// Record dear imgui primitives into command buffer
 	ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), cmd);
+}
+
+void VulkanEngine::loadImages()
+{
+  Texture lostEmpire;
+
+  vkutil::loadImageFromFile(vmaAllocator, uploadContext, "../assets/lost_empire-RGBA.png", lostEmpire.image);
+
+  VkImageViewCreateInfo imageinfo = vkinit::imageViewCreateInfo(VK_FORMAT_R8G8B8A8_SRGB, lostEmpire.image.vkImage, VK_IMAGE_ASPECT_COLOR_BIT);
+  vkCreateImageView(device, &imageinfo, nullptr, &lostEmpire.imageView);
+
+  loadedTextures["empire_diffuse"] = lostEmpire;
 }

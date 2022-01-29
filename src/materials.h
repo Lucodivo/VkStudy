@@ -139,6 +139,6 @@ static MaterialCreateInfo materialDefaulColor{
 
 static MaterialCreateInfo materialTextured{
 	"textured",
-	SHADER_DIR"pnct_color_out_0_tex_out_1.vert.spv",
+	SHADER_DIR"pnct_tex_out_0.vert.spv",
 	SHADER_DIR"textured_lit.frag.spv"
 };

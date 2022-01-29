@@ -1,4 +1,7 @@
-﻿VkCommandPoolCreateInfo vkinit::commandPoolCreateInfo(uint32_t queueFamilyIndex, VkCommandPoolCreateFlags flags /*= 0*/)
+﻿
+#include "vk_initializers.h"
+
+VkCommandPoolCreateInfo vkinit::commandPoolCreateInfo(uint32_t queueFamilyIndex, VkCommandPoolCreateFlags flags /*= 0*/)
 {
 	VkCommandPoolCreateInfo info = {};
 	info.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
@@ -91,7 +94,13 @@ VkPipelineColorBlendAttachmentState vkinit::colorBlendAttachmentState() {
 	VkPipelineColorBlendAttachmentState colorBlendAttachment = {};
 	colorBlendAttachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |
 		VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
-	colorBlendAttachment.blendEnable = VK_FALSE;
+	colorBlendAttachment.blendEnable = VK_TRUE;
+  colorBlendAttachment.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
+  colorBlendAttachment.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+  colorBlendAttachment.colorBlendOp = VK_BLEND_OP_ADD;
+  colorBlendAttachment.srcAlphaBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
+  colorBlendAttachment.dstAlphaBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+  colorBlendAttachment.alphaBlendOp = VK_BLEND_OP_SUBTRACT;
 	return colorBlendAttachment;
 }
 
@@ -245,4 +254,34 @@ VkSemaphoreCreateInfo vkinit::semaphoreCreateInfo() {
 	semaphoreCreateInfo.pNext = nullptr;
 	semaphoreCreateInfo.flags = 0;
 	return semaphoreCreateInfo;
+}
+
+VkWriteDescriptorSet vkinit::writeDescriptorImage(VkDescriptorType type, VkDescriptorSet dstSet, VkDescriptorImageInfo* imageInfo, u32 binding)
+{
+  VkWriteDescriptorSet write = {};
+  write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+  write.pNext = nullptr;
+
+  write.dstBinding = binding;
+  write.dstSet = dstSet;
+  write.descriptorCount = 1;
+  write.descriptorType = type;
+  write.pImageInfo = imageInfo;
+
+  return write;
+}
+
+VkSamplerCreateInfo vkinit::samplerCreateInfo(VkFilter filters, VkSamplerAddressMode samplerAddressMode)
+{
+  VkSamplerCreateInfo info = {};
+  info.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+  info.pNext = nullptr;
+
+  info.magFilter = filters;
+  info.minFilter = filters;
+  info.addressModeU = samplerAddressMode;
+  info.addressModeV = samplerAddressMode;
+  info.addressModeW = samplerAddressMode;
+
+  return info;
 }

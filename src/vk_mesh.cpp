@@ -183,7 +183,7 @@ bool Mesh::loadFromGltf(const char* fileName) {
 			for (u32 i = 0; i < indexCount; i++) {
 				u16 vertIndex = indicesDataOffset[i];
 
-				Vertex newVert;
+				Vertex newVert{};
 
 				//vertex position
 				newVert.position.x = positionAttributeData[3 * vertIndex + 0];

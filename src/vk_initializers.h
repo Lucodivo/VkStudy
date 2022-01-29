@@ -23,5 +23,8 @@ namespace vkinit {
 	VkWriteDescriptorSet writeDescriptorBuffer(VkDescriptorType descriptorType, VkDescriptorSet descriptorSet, VkDescriptorBufferInfo* bufferInfo, u32 bindingIndex);
 	VkFenceCreateInfo fenceCreateInfo(VkFenceCreateFlags flags = 0);
 	VkSemaphoreCreateInfo semaphoreCreateInfo();
+  VkWriteDescriptorSet writeDescriptorImage(VkDescriptorType type, VkDescriptorSet dstSet, VkDescriptorImageInfo* imageInfo, u32 binding);
+  VkSamplerCreateInfo samplerCreateInfo(VkFilter filters, VkSamplerAddressMode samplerAddressMode = VK_SAMPLER_ADDRESS_MODE_REPEAT);
+
 }
 

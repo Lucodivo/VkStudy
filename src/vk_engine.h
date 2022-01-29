@@ -1,6 +1,3 @@
-// vulkan_guide.h : Include file for standard system include files,
-// or project specific include files.
-
 #pragma once
 
 const u32 FRAME_OVERLAP = 2;
@@ -9,7 +6,6 @@ const u32 FRAME_OVERLAP = 2;
 #define DEFAULT_WINDOW_HEIGHT 1080
 
 struct Material {
-	VkDescriptorSet textureSet{ VK_NULL_HANDLE }; //texture defaulted to null
 	VkPipeline pipeline;
 	VkPipelineLayout pipelineLayout;
 };
@@ -18,6 +14,7 @@ struct RenderObject {
 	Mesh* mesh;
 	Material* material;
 	const char* materialName;
+  VkDescriptorSet textureSet{ VK_NULL_HANDLE }; //texture defaulted to null
 	glm::mat4 modelMatrix;
 	glm::vec4 defaultColor;
 };
@@ -109,6 +106,7 @@ public:
 
 	std::unordered_map<std::string, Material> materials;
 	std::unordered_map<std::string, Mesh> meshes;
+  std::unordered_map<std::string, Texture> loadedTextures;
 
 	VkPipeline fragmentShaderPipeline;
 	VkPipelineLayout fragmentShaderPipelineLayout;
@@ -171,6 +169,7 @@ private:
 	void cleanupSwapChain();
 	void recreateSwapChain();
 
+  void loadImages();
 	void loadMeshes();
 	void uploadMesh(Mesh& mesh);
 	Mesh* getMesh(const std::string& name); //returns nullptr if it can't be found
