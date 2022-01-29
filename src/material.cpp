@@ -1,3 +1,6 @@
+
+#include "materials.h"
+
 VkDescriptorSetLayoutCreateInfo DescriptorSetLayoutData::descriptorSetLayoutCreateInfo() {
 	VkDescriptorSetLayoutCreateInfo descriptorSetLayoutCreateInfo{};
 	descriptorSetLayoutCreateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
@@ -20,11 +23,27 @@ VkPipelineVertexInputStateCreateInfo ShaderInputMetadata::vertexInputStateCreate
 	return vertexInputStateCreateInfo;
 }
 
+// Returns a vector of VkPushConstantRange which are sorted by their offset
+void MaterialManager::getPushConstantRangeData(const ReflectData& data, std::vector<VkPushConstantRange>& outData) {
+  for(SpvReflectBlockVariable* pushConstantBlock : data.pushConstantBlockVars) {
+    VkPushConstantRange pushConstantRange = {};
+    pushConstantRange.offset = pushConstantBlock->offset;
+    pushConstantRange.size = pushConstantBlock->size;
+    pushConstantRange.stageFlags = data.shaderStage;
+  }
+
+  // sort the push constant ranges by offset
+  std::sort(outData.begin(), outData.end(),
+            [](const VkPushConstantRange& a, const VkPushConstantRange& b) {
+              Assert(a.offset != b.offset); // no two push constants should start at the same offset
+              return a.offset < b.offset;
+            });
+}
+
 // Returns a vector of descriptor set layouts which group together bindings per set
 // These sets will be returned in increasing order based on their set index
 // the bindings within the set will be returned in increasing order based on their binding index
-void MaterialManager::getDescriptorSetLayoutData(const SpvReflectShaderModule& module, 
-                                                  const ReflectData& data, 
+void MaterialManager::getDescriptorSetLayoutData(const ReflectData& data,
                                                   std::vector<DescriptorSetLayoutData>& outData) {
   u64 descSetCount = data.reflectDescSets.size();
   outData.resize(descSetCount, {});
@@ -50,7 +69,7 @@ void MaterialManager::getDescriptorSetLayoutData(const SpvReflectShaderModule& m
         layoutBinding.descriptorCount *= reflectBinding.array.dims[iArrayDimension];
       }
 
-      layoutBinding.stageFlags = static_cast<VkShaderStageFlagBits>(module.shader_stage);
+      layoutBinding.stageFlags = data.shaderStage;
     }
 
     // sort each set by desc binding index
@@ -69,34 +88,30 @@ void MaterialManager::getDescriptorSetLayoutData(const SpvReflectShaderModule& m
     });
 }
 
-void MaterialManager::getReflectData(const SpvReflectShaderModule module, ReflectData& outData) {
-  SpvReflectResult result;
+void MaterialManager::getReflectData(const SpvReflectShaderModule& module, ReflectData& outData) {
+  outData.shaderStage = static_cast<VkShaderStageFlagBits>(module.shader_stage);
+
   u32 count = 0;
-  result = spvReflectEnumerateDescriptorSets(&module, &count, NULL);
-  assert(result == SPV_REFLECT_RESULT_SUCCESS);
-
+  SPV_CHECK(spvReflectEnumerateDescriptorSets(&module, &count, nullptr));
   outData.reflectDescSets.resize(count);
-  result = spvReflectEnumerateDescriptorSets(&module, &count, outData.reflectDescSets.data());
-  assert(result == SPV_REFLECT_RESULT_SUCCESS);
+  SPV_CHECK(spvReflectEnumerateDescriptorSets(&module, &count, outData.reflectDescSets.data()));
 
-  result = spvReflectEnumerateInputVariables(&module, &count, NULL);
-  assert(result == SPV_REFLECT_RESULT_SUCCESS);
+  SPV_CHECK(spvReflectEnumeratePushConstantBlocks(&module, &count, nullptr));
+  outData.pushConstantBlockVars.resize(count);
+  SPV_CHECK(spvReflectEnumeratePushConstantBlocks(&module, &count, outData.pushConstantBlockVars.data()));
 
+  SPV_CHECK(spvReflectEnumerateInputVariables(&module, &count, nullptr));
   outData.inputVars.resize(count);
-  result = spvReflectEnumerateInputVariables(&module, &count, outData.inputVars.data());
-  assert(result == SPV_REFLECT_RESULT_SUCCESS);
+  SPV_CHECK(spvReflectEnumerateInputVariables(&module, &count, outData.inputVars.data()));
 
-  result = spvReflectEnumerateOutputVariables(&module, &count, NULL);
-  assert(result == SPV_REFLECT_RESULT_SUCCESS);
-
+  SPV_CHECK(spvReflectEnumerateOutputVariables(&module, &count, nullptr));
   outData.outputVars.resize(count);
-  result = spvReflectEnumerateOutputVariables(&module, &count, outData.outputVars.data());
-  assert(result == SPV_REFLECT_RESULT_SUCCESS);
+  SPV_CHECK(spvReflectEnumerateOutputVariables(&module, &count, outData.outputVars.data()));
 }
 
 // NOTE: This function expects that the DescriptorSetLayoutData is sorted increasingly by the set index
 // NOTE: It also assumes that the bindings within the sets are sorted increasingle by the binding index
-void MaterialManager::mergeDescSetReflectionData(const std::vector<DescriptorSetLayoutData>& dataA, const std::vector<DescriptorSetLayoutData>& dataB, std::vector<DescriptorSetLayoutData>& out) {
+void MaterialManager::mergeDescSetReflectionData(const std::vector<DescriptorSetLayoutData>& dataA, const std::vector<DescriptorSetLayoutData>& dataB, std::vector<DescriptorSetLayoutData>& dataOut) {
 
   u32 setsIndexA = 0;
   u32 setsIndexB = 0;
@@ -108,18 +123,18 @@ void MaterialManager::mergeDescSetReflectionData(const std::vector<DescriptorSet
     const DescriptorSetLayoutData& setLayoutB = dataB[setsIndexB];
     if (setLayoutA.setIndex < setLayoutB.setIndex) {
       // empty set A into output
-      out.push_back(setLayoutA);
+      dataOut.push_back(setLayoutA);
       ++setsIndexA;
     }
     else if (setLayoutB.setIndex < setLayoutA.setIndex) {
       // empty set B into output
-      out.push_back(setLayoutB);
+      dataOut.push_back(setLayoutB);
       ++setsIndexB;
     }
     else {
       // resolve any set/binding descrepancies
-      out.emplace_back();
-      DescriptorSetLayoutData& setLayout = out.back();
+      dataOut.emplace_back();
+      DescriptorSetLayoutData& setLayout = dataOut.back();
       setLayout.setIndex = setLayoutA.setIndex;
 
       std::vector<VkDescriptorSetLayoutBinding>& bindings = setLayout.bindings;
@@ -173,12 +188,12 @@ void MaterialManager::mergeDescSetReflectionData(const std::vector<DescriptorSet
 
   if (setsIndexA < setsACount) {
     // empty set A into output
-    out.insert(out.end(), dataA.begin() + setsIndexA, dataA.end());
+    dataOut.insert(dataOut.end(), dataA.begin() + setsIndexA, dataA.end());
   }
 
   if (setsIndexB < setsBCount) {
     // empty set B into output
-    out.insert(out.end(), dataB.begin() + setsIndexB, dataB.end());
+    dataOut.insert(dataOut.end(), dataB.begin() + setsIndexB, dataB.end());
   }
 }
 
@@ -218,15 +233,17 @@ void MaterialManager::loadShaderMetadata(VkDevice device, const char* vertFileNa
     if(vertShader.module == VK_NULL_HANDLE) { return; }
 
     SpvReflectShaderModule vertReflModule{};
-    SpvReflectResult result = spvReflectCreateShaderModule(vertShaderBytes.size(), vertShaderBytes.data(), &vertReflModule);
-    Assert(result == SPV_REFLECT_RESULT_SUCCESS);
+    SPV_CHECK(spvReflectCreateShaderModule(vertShaderBytes.size(), vertShaderBytes.data(), &vertReflModule));
 
     ReflectData vertReflectData;
     getReflectData(vertReflModule, vertReflectData);
 
     Assert(vertReflModule.shader_stage == SPV_REFLECT_SHADER_STAGE_VERTEX_BIT);
 
-    getDescriptorSetLayoutData(vertReflModule, vertReflectData, vertShader.descSetLayouts);
+    getDescriptorSetLayoutData(vertReflectData, vertShader.descSetLayouts);
+
+    // Push Constant Range Data
+    getPushConstantRangeData(vertReflectData, vertShader.pushConstantRanges);
 
     // TODO: a real application would be merged with similar structures from other shader stages and/or pipelines
     // to create a VkPipelineLayout.
@@ -295,15 +312,17 @@ void MaterialManager::loadShaderMetadata(VkDevice device, const char* vertFileNa
     if(fragShader.module == VK_NULL_HANDLE) { return; }
 
     SpvReflectShaderModule fragReflModule{};
-    SpvReflectResult result = spvReflectCreateShaderModule(fragShaderBytes.size(), fragShaderBytes.data(), &fragReflModule);
-    assert(result == SPV_REFLECT_RESULT_SUCCESS);
+    SPV_CHECK(spvReflectCreateShaderModule(fragShaderBytes.size(), fragShaderBytes.data(), &fragReflModule));
     ReflectData fragReflectData;
     getReflectData(fragReflModule, fragReflectData);
 
     Assert(fragReflModule.shader_stage == SPV_REFLECT_SHADER_STAGE_FRAGMENT_BIT);
 
     // Descriptor Set Layout Data
-    getDescriptorSetLayoutData(fragReflModule, fragReflectData, fragShader.descSetLayouts);
+    getDescriptorSetLayoutData(fragReflectData, fragShader.descSetLayouts);
+
+    // Push Constant Range Data
+    getPushConstantRangeData(fragReflectData, fragShader.pushConstantRanges);
 
     // cache frag shader metadata
     cachedFragShaders[fragFileName] = fragShader;
@@ -333,4 +352,45 @@ void MaterialManager::mergeReflectionData(const VertexShaderMetadata& vertShader
   outShader.fragModule = fragShader.module;
   outShader.input = vertShader.input;
   mergeDescSetReflectionData(vertShader.descSetLayouts, fragShader.descSetLayouts, outShader.descSetLayouts);
+  mergePushConstantRangeData(vertShader.pushConstantRanges, fragShader.pushConstantRanges, outShader.pushConstantRanges);
+}
+
+// Assumes push constant range vectors are sorted increasingly by offset
+void MaterialManager::mergePushConstantRangeData(const std::vector<VkPushConstantRange>& rangesA,
+                                                 const std::vector<VkPushConstantRange>& rangesB,
+                                                 std::vector<VkPushConstantRange>& rangesOut){
+  u32 rangesAIndex = 0;
+  u32 rangesBIndex = 0;
+  u32 rangesACount = static_cast<u32>(rangesA.size());
+  u32 rangesBCount = static_cast<u32>(rangesB.size());
+  while(rangesAIndex < rangesACount && rangesBIndex < rangesBCount) {
+    const VkPushConstantRange& rangeA = rangesA[rangesAIndex];
+    const VkPushConstantRange& rangeB = rangesB[rangesBIndex];
+    if(rangeA.offset < rangeB.offset) { // take A
+      // assert that the offset of range B is sufficiently distant
+      Assert(rangeB.offset >= (rangeA.offset + rangeA.size));
+      rangesOut.push_back(rangeA);
+      ++rangesAIndex;
+    } else if(rangeB.offset < rangeA.offset) { // take B
+      // assert that the offset of range B is sufficiently distant
+      Assert(rangeA.offset >= (rangeB.offset + rangeB.size));
+      rangesOut.push_back(rangeB);
+      ++rangesBIndex;
+    } else { // merge
+      Assert(rangeA.size == rangeB.size);
+      VkPushConstantRange outRange = rangeA;
+      outRange.stageFlags |= rangeB.stageFlags;
+      rangesOut.push_back(outRange);
+      ++rangesAIndex;
+      ++rangesBIndex;
+    }
+  }
+
+  if(rangesAIndex < rangesACount) {
+    rangesOut.insert(rangesOut.end(), rangesA.begin() + rangesAIndex, rangesA.end());
+  }
+
+  if(rangesBIndex < rangesBCount) {
+    rangesOut.insert(rangesOut.end(), rangesB.begin() + rangesBIndex, rangesB.end());
+  }
 }

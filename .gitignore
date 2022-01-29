@@ -2,6 +2,7 @@
 /bin
 /out
 /.vs
+/.idea
 /.github
 /assets
 /third_party/*/
