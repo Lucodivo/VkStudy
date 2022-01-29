@@ -37,7 +37,7 @@ void Camera::turn(f32 yawDelta, f32 pitchDelta) {
 
   // pitch
   pitch += pitchDelta;
-  pitch = Clamp(pitch, -maxPitch, maxPitch);
+  pitch = CLAMP(pitch, -maxPitch, maxPitch);
   f32 sinePitch = -sin(pitch);
   f32 cosinePitch = cos(pitch);
   newForward.z = sinePitch;

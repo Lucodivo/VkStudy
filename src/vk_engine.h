@@ -105,6 +105,8 @@ public:
 	//default array of renderable objects
 	std::vector<RenderObject> renderables;
 
+	MaterialManager materialManager;
+
 	std::unordered_map<std::string, Material> materials;
 	std::unordered_map<std::string, Mesh> meshes;
 
@@ -143,8 +145,6 @@ public:
 	UploadContext uploadContext;
 
 private:
-
-	std::unordered_map<std::string, VkShaderModule> cachedShaderModules;
 	
 	void initSDL();
 
@@ -170,8 +170,6 @@ private:
 
 	void cleanupSwapChain();
 	void recreateSwapChain();
-
-	VkShaderModule acquireShader(const char* fileName);
 
 	void loadMeshes();
 	void uploadMesh(Mesh& mesh);

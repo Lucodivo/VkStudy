@@ -46,11 +46,7 @@ void VulkanEngine::cleanup()
 		cleanupSwapChain();
 		mainDeletionQueue.flush();
 		vmaDestroyAllocator(vmaAllocator);
-
-		for (std::pair<std::string, VkShaderModule> pair : cachedShaderModules) {
-			VkShaderModule shaderModule = pair.second;
-			vkDestroyShaderModule(device, shaderModule, nullptr);
-		}
+		materialManager.destroyAll(device);
 
 		vkDestroyDevice(device, nullptr);
 		vkDestroySurfaceKHR(instance, surface, nullptr);
@@ -780,8 +776,8 @@ void VulkanEngine::initPipelines() {
 
 void VulkanEngine::createFragmentShaderPipeline() {
 	// TODO: merge with every other materials and pipeline creation
-	VkShaderModule vertShader = acquireShader(SHADER_DIR"hard_coded_fullscreen_quad.vert.spv");
-	VkShaderModule fragShader = acquireShader(SHADER_DIR"fragment_shader_test.frag.spv");
+  ShaderMetadata shaderMetadata;
+  materialManager.loadShaderMetadata(device, SHADER_DIR"hard_coded_fullscreen_quad.vert.spv", SHADER_DIR"fragment_shader_test.frag.spv", shaderMetadata);
 
 	VkPipelineLayoutCreateInfo pipelineLayoutInfo = vkinit::pipelineLayoutCreateInfo();
 	pipelineLayoutInfo.pPushConstantRanges = &fragmentShaderPushConstantsRange;
@@ -790,8 +786,8 @@ void VulkanEngine::createFragmentShaderPipeline() {
 	VK_CHECK(vkCreatePipelineLayout(device, &pipelineLayoutInfo, nullptr, &fragmentShaderPipelineLayout));
 
 	PipelineBuilder pipelineBuilder;
-	pipelineBuilder.shaderStages.push_back(vkinit::pipelineShaderStageCreateInfo(VK_SHADER_STAGE_VERTEX_BIT, vertShader));
-	pipelineBuilder.shaderStages.push_back(vkinit::pipelineShaderStageCreateInfo(VK_SHADER_STAGE_FRAGMENT_BIT, fragShader));
+	pipelineBuilder.shaderStages.push_back(vkinit::pipelineShaderStageCreateInfo(VK_SHADER_STAGE_VERTEX_BIT, shaderMetadata.vertModule));
+	pipelineBuilder.shaderStages.push_back(vkinit::pipelineShaderStageCreateInfo(VK_SHADER_STAGE_FRAGMENT_BIT, shaderMetadata.fragModule));
 	pipelineBuilder.vertexInputInfo = vkinit::vertexInputStateCreateInfo();
 	pipelineBuilder.inputAssembly = vkinit::inputAssemblyCreateInfo(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
 	pipelineBuilder.viewport.x = 0.0f;
@@ -811,22 +807,9 @@ void VulkanEngine::createFragmentShaderPipeline() {
 	fragmentShaderPipeline = pipelineBuilder.buildPipeline(device, renderPass);
 }
 
-VkShaderModule VulkanEngine::acquireShader(const char* fileName) {
-	VkShaderModule resultShader;
-	if (cachedShaderModules.find(fileName) != cachedShaderModules.end()) {
-		resultShader = cachedShaderModules[fileName];
-	}
-	else {
-		resultShader = vkutil::loadShaderModule(device, fileName);
-		Assert(resultShader != VK_NULL_HANDLE);
-		cachedShaderModules[fileName] = resultShader;
-	}
-	return resultShader;
-}
-
 void VulkanEngine::createPipeline(MaterialCreateInfo matInfo) {
-	VkShaderModule vertShader = acquireShader(matInfo.vertFileName);
-	VkShaderModule fragShader = acquireShader(matInfo.fragFileName);
+  ShaderMetadata shaderMetadata;
+  materialManager.loadShaderMetadata(device, matInfo.vertFileName, matInfo.fragFileName, shaderMetadata);
 
 	// TODO: Pipeline layout can be reused for several pipelines/materials
 	// TODO: Reuse of pipeline layouts will allows for push constants to be used for several pipelines
@@ -842,8 +825,8 @@ void VulkanEngine::createPipeline(MaterialCreateInfo matInfo) {
 	VK_CHECK(vkCreatePipelineLayout(device, &pipelineLayoutInfo, nullptr, &pipelineLayout));
 
 	PipelineBuilder pipelineBuilder;
-	pipelineBuilder.shaderStages.push_back(vkinit::pipelineShaderStageCreateInfo(VK_SHADER_STAGE_VERTEX_BIT, vertShader));
-	pipelineBuilder.shaderStages.push_back(vkinit::pipelineShaderStageCreateInfo(VK_SHADER_STAGE_FRAGMENT_BIT, fragShader));
+	pipelineBuilder.shaderStages.push_back(vkinit::pipelineShaderStageCreateInfo(VK_SHADER_STAGE_VERTEX_BIT, shaderMetadata.vertModule));
+	pipelineBuilder.shaderStages.push_back(vkinit::pipelineShaderStageCreateInfo(VK_SHADER_STAGE_FRAGMENT_BIT, shaderMetadata.fragModule));
 	pipelineBuilder.vertexInputInfo = vkinit::vertexInputStateCreateInfo();
 	// input assembly is the configuration for drawing triangle lists, strips, or points
 	pipelineBuilder.inputAssembly = vkinit::inputAssemblyCreateInfo(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);

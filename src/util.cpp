@@ -18,7 +18,7 @@ void readFile(const char* filePath, std::vector<char>& fileBytes)
 
 	Assert(file.is_open());
 	if (!file.is_open()) {
-		std::cout << "Could not open shader file: " << filePath << std::endl;
+		std::cout << "Could not open file: " << filePath << std::endl;
 	}
 
 	//find what the size of the file is by looking up the location of the cursor
