@@ -8,7 +8,7 @@ public:
   f32 pitch = 0.0f;
 
   void move(glm::vec3 unitsVec); // -1/1, x = left/right, y = back/forward, z = down/up
-  
+
   void turn(f32 yawDelta, f32 pitchDelta);
 
   glm::mat4 getViewMatrix();

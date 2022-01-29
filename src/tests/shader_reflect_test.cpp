@@ -2,54 +2,50 @@
 
 #include <gtest/gtest.h>
 
-namespace
-{
-class VulkanTest : public testing::Test {
-protected:
-  // run immediately before a test starts
-  void SetUp() override
-  {
-    vkb::InstanceBuilder builder;
-
-    vkb::Instance vkbInst = builder.set_app_name("Vulkan Tests")
-            .request_validation_layers(true)
-            .require_api_version(1, 1, 0)
-            .use_default_debug_messenger()
-            .build().value();
-
-    instance = vkbInst.instance;
-    debugMessenger = vkbInst.debug_messenger;
-
-    vkb::PhysicalDeviceSelector selector{ vkbInst };
-    vkb::PhysicalDevice physicalDevice = selector.set_minimum_version(1, 1)
-                                                  .defer_surface_initialization()
-                                                  .select().value();
-
-    vkb::DeviceBuilder deviceBuilder{ physicalDevice };
-
-    vkb::Device vkbDevice = deviceBuilder.build().value();
-
-    device = vkbDevice.device;
-  }
-
-  // invoked immediately after a test finishes
-  void TearDown() override
-  {
-    vkDestroyDevice(device, nullptr);
-    vkb::destroy_debug_utils_messenger(instance, debugMessenger);
-    vkDestroyInstance(instance, nullptr);
-  }
-
-  VkInstance instance;
-  VkDevice device;
-  VkDebugUtilsMessengerEXT debugMessenger;
-};
-
-class MaterialManagerTest : public VulkanTest {
+namespace {
+  class VulkanTest : public testing::Test {
   protected:
     // run immediately before a test starts
-    void SetUp() override
-    {
+    void SetUp() override {
+      vkb::InstanceBuilder builder;
+
+      vkb::Instance vkbInst = builder.set_app_name("Vulkan Tests")
+              .request_validation_layers(true)
+              .require_api_version(1, 1, 0)
+              .use_default_debug_messenger()
+              .build().value();
+
+      instance = vkbInst.instance;
+      debugMessenger = vkbInst.debug_messenger;
+
+      vkb::PhysicalDeviceSelector selector{vkbInst};
+      vkb::PhysicalDevice physicalDevice = selector.set_minimum_version(1, 1)
+              .defer_surface_initialization()
+              .select().value();
+
+      vkb::DeviceBuilder deviceBuilder{physicalDevice};
+
+      vkb::Device vkbDevice = deviceBuilder.build().value();
+
+      device = vkbDevice.device;
+    }
+
+    // invoked immediately after a test finishes
+    void TearDown() override {
+      vkDestroyDevice(device, nullptr);
+      vkb::destroy_debug_utils_messenger(instance, debugMessenger);
+      vkDestroyInstance(instance, nullptr);
+    }
+
+    VkInstance instance;
+    VkDevice device;
+    VkDebugUtilsMessengerEXT debugMessenger;
+  };
+
+  class MaterialManagerTest : public VulkanTest {
+  protected:
+    // run immediately before a test starts
+    void SetUp() override {
       VulkanTest::SetUp();
 
       for(u32 i = 0; i < ArrayCount(preloadedMaterialData); i++) {
@@ -62,8 +58,7 @@ class MaterialManagerTest : public VulkanTest {
     }
 
     // invoked immediately after a test finishes
-    void TearDown() override
-    {
+    void TearDown() override {
       // MaterialManagerTest tear down
       matManager.destroyAll(device);
 
@@ -77,14 +72,14 @@ class MaterialManagerTest : public VulkanTest {
       ShaderMetadata metadata;
     } preloadedMaterialData[6] = {
             // three that use the same vertex shader
-            {materialBlue, {}},
-            {materialRed, {}},
-            {materialGreen, {}},
+            {materialBlue,          {}},
+            {materialRed,           {}},
+            {materialGreen,         {}},
             // two that use the same fragment shader
             {materialNormalAsColor, {}},
-            {materialVertexColor, {}},
+            {materialVertexColor,   {}},
             // One unique
-            {materialTextured, {}},
+            {materialTextured,      {}},
     };
     MaterialManager matManager;
   };
@@ -138,7 +133,7 @@ class MaterialManagerTest : public VulkanTest {
     // assert that push constants are exact
     ASSERT_EQ(repeatShaderMetadata.pushConstantRanges.size(), expectedShaderMetadata.pushConstantRanges.size());
     u32 pushConstantSize = static_cast<u32>(repeatShaderMetadata.pushConstantRanges.size());
-    for(u32 i = 0; i < pushConstantSize; i++){
+    for(u32 i = 0; i < pushConstantSize; i++) {
       const VkPushConstantRange& repeatPushConstantRange = repeatShaderMetadata.pushConstantRanges[i];
       const VkPushConstantRange& expectedPushConstantRange = expectedShaderMetadata.pushConstantRanges[i];
       ASSERT_EQ(repeatPushConstantRange.stageFlags, expectedPushConstantRange.stageFlags);

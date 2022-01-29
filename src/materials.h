@@ -3,37 +3,37 @@
 #define SHADER_DIR "../shaders/spv/"
 
 #define SPV_CHECK(x)                                                 \
-	do                                                              \
-	{                                                               \
-		SpvReflectResult err = x;                                           \
-		if (err != SPV_REFLECT_RESULT_SUCCESS)                                                    \
-		{                                                           \
-			std::cout <<"Detected SPIR-V Reflect error: " << err << std::endl; \
-			abort();                                                \
-		}                                                           \
-	} while (0)
+  do                                                              \
+  {                                                               \
+    SpvReflectResult err = x;                                           \
+    if (err != SPV_REFLECT_RESULT_SUCCESS)                                                    \
+    {                                                           \
+      std::cout <<"Detected SPIR-V Reflect error: " << err << std::endl; \
+      abort();                                                \
+    }                                                           \
+  } while (0)
 
 struct MaterialCreateInfo {
-	const char* name;
-	const char* vertFileName;
-	const char* fragFileName;
+  const char* name;
+  const char* vertFileName;
+  const char* fragFileName;
 };
 
 struct FragmentShaderPushConstants {
-	f32 time;
-	f32 resolutionX;
-	f32 resolutionY;
+  f32 time;
+  f32 resolutionX;
+  f32 resolutionY;
 };
 
 struct DescriptorSetLayoutData {
-	u32 setIndex;
-	std::vector<VkDescriptorSetLayoutBinding> bindings;
-	VkDescriptorSetLayoutCreateInfo descriptorSetLayoutCreateInfo();
+  u32 setIndex;
+  std::vector<VkDescriptorSetLayoutBinding> bindings;
+  VkDescriptorSetLayoutCreateInfo descriptorSetLayoutCreateInfo();
 };
 
 struct ShaderInputMetadata {
-	VertexInputDescription vertexInputDesc;
-	VkPipelineVertexInputStateCreateInfo vertexInputStateCreateInfo();
+  VertexInputDescription vertexInputDesc;
+  VkPipelineVertexInputStateCreateInfo vertexInputStateCreateInfo();
 };
 
 struct VertexShaderMetadata {
@@ -50,7 +50,7 @@ struct FragmentShaderMetadata {
 };
 
 struct ShaderMetadata {
-	VkShaderModule vertModule;
+  VkShaderModule vertModule;
   VkShaderModule fragModule;
   std::vector<DescriptorSetLayoutData> descSetLayouts;
   std::vector<VkPushConstantRange> pushConstantRanges;
@@ -59,12 +59,12 @@ struct ShaderMetadata {
 
 class MaterialManager {
 public:
-	std::unordered_map<std::string, VertexShaderMetadata> cachedVertShaders;
+  std::unordered_map<std::string, VertexShaderMetadata> cachedVertShaders;
   std::unordered_map<std::string, FragmentShaderMetadata> cachedFragShaders;
   std::unordered_map<std::string, ShaderMetadata> cachedShaders;
-	void destroyAll(VkDevice device);
+  void destroyAll(VkDevice device);
 
-	void loadShaderMetadata(VkDevice device, const char* vertFileName, const char* fragFileName, ShaderMetadata& out);
+  void loadShaderMetadata(VkDevice device, const char* vertFileName, const char* fragFileName, ShaderMetadata& out);
 
 private:
 
@@ -76,12 +76,12 @@ private:
     std::vector<SpvReflectInterfaceVariable*> outputVars;
   };
 
-	void mergeDescSetReflectionData(const std::vector<DescriptorSetLayoutData>& dataA,
-																	const std::vector<DescriptorSetLayoutData>& dataB,
-																	std::vector<DescriptorSetLayoutData>& dataOut);
-	void getDescriptorSetLayoutData(const ReflectData& data,
-																	std::vector<DescriptorSetLayoutData>& outData);
-	void getReflectData(const SpvReflectShaderModule& module, ReflectData& outData);
+  void mergeDescSetReflectionData(const std::vector<DescriptorSetLayoutData>& dataA,
+                                  const std::vector<DescriptorSetLayoutData>& dataB,
+                                  std::vector<DescriptorSetLayoutData>& dataOut);
+  void getDescriptorSetLayoutData(const ReflectData& data,
+                                  std::vector<DescriptorSetLayoutData>& outData);
+  void getReflectData(const SpvReflectShaderModule& module, ReflectData& outData);
   void mergeReflectionData(const VertexShaderMetadata& vertShader, const FragmentShaderMetadata& fragShader, ShaderMetadata& outShader);
   void mergePushConstantRangeData(const std::vector<VkPushConstantRange>& rangesA,
                                   const std::vector<VkPushConstantRange>& rangesB,

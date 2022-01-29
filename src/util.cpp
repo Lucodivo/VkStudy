@@ -11,24 +11,23 @@ f64 StopTimer(Timer& timer) {
   return timer.delta;
 }
 
-void readFile(const char* filePath, std::vector<char>& fileBytes)
-{
-	//open the file. With cursor at the end
-	std::ifstream file(filePath, std::ios::ate | std::ios::binary);
+void readFile(const char* filePath, std::vector<char>& fileBytes) {
+  //open the file. With cursor at the end
+  std::ifstream file(filePath, std::ios::ate | std::ios::binary);
 
-	Assert(file.is_open());
-	if (!file.is_open()) {
-		std::cout << "Could not open file: " << filePath << std::endl;
-	}
+  Assert(file.is_open());
+  if(!file.is_open()) {
+    std::cout << "Could not open file: " << filePath << std::endl;
+  }
 
-	//find what the size of the file is by looking up the location of the cursor
-	u64 fileSize = (u64)file.tellg();
+  //find what the size of the file is by looking up the location of the cursor
+  u64 fileSize = (u64)file.tellg();
 
-	fileBytes.clear();
-	fileBytes.resize(fileSize);
+  fileBytes.clear();
+  fileBytes.resize(fileSize);
 
-	//put file cursor at beginning
-	file.seekg(0);
-	file.read((char*)fileBytes.data(), fileSize);
-	file.close();
+  //put file cursor at beginning
+  file.seekg(0);
+  file.read((char*)fileBytes.data(), fileSize);
+  file.close();
 }
