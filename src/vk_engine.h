@@ -142,6 +142,12 @@ public:
 
   UploadContext uploadContext;
 
+  struct {
+    bool generalDebug;
+    bool mainMenu;
+    bool fps;
+  } imguiState;
+
 private:
 
   void initSDL();
@@ -184,4 +190,9 @@ private:
   void renderImgui(VkCommandBuffer cmd);
 
   FrameData& getCurrentFrame();
+
+  // ImGui functions for no thought debug window options
+  // Not for anything but messily pushing info or adjusting values
+  void quickDebugFloat(const char* label, float* v, float v_min, float v_max, const char* format = "%.3f", ImGuiSliderFlags flags = 0) const;
+  void quickDebugText(const char* fmt, ...) const;
 };

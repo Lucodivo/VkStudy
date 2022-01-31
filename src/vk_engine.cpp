@@ -148,50 +148,66 @@ void VulkanEngine::processInput() {
   bool altWasDown = altDown;
 
   SDL_Event e;
-	while (SDL_PollEvent(&e) != 0)
-	{
-		switch (e.type) {
-		case SDL_QUIT: input.quit = true; break;
-		case SDL_KEYDOWN:
-			switch (e.key.keysym.sym)
-			{
-				case SDLK_ESCAPE: input.quit = true; break;
-				case SDLK_SPACE: break;
-				case SDLK_LSHIFT: input.button1 = true; break;
-				case SDLK_a: case SDLK_LEFT: input.left = true; break;
-				case SDLK_d: case SDLK_RIGHT: input.right = true; break;
-				case SDLK_w: case SDLK_UP: input.forward = true; break;
-				case SDLK_s: case SDLK_DOWN: input.back = true; break;
-				case SDLK_q: input.down = true; break;
-				case SDLK_e: input.up = true; break;
-				case SDLK_LALT: case SDLK_RALT: altDown = true; break;
-			}
-			break;
-		case SDL_KEYUP:
-			switch (e.key.keysym.sym)
-			{
-				case SDLK_SPACE: input.switch1 = !input.switch1; break;
-				case SDLK_a: case SDLK_LEFT: input.left = false; break;
-				case SDLK_d: case SDLK_RIGHT: input.right = false; break;
-				case SDLK_w: case SDLK_UP: input.forward = false; break;
-				case SDLK_s: case SDLK_DOWN: input.back = false; break;
-				case SDLK_q: input.down = false; break;
-				case SDLK_e: input.up = false;break;
-				case SDLK_LALT: case SDLK_RALT: altDown = false; break;
-				case SDLK_RETURN: if (altWasDown) { input.fullscreen = !input.fullscreen; } break;
-			}
-			break;
-		case SDL_MOUSEMOTION:
-		{
-			input.mouseDeltaX += (f32)e.motion.xrel / windowExtent.width;
-			input.mouseDeltaY += (f32)e.motion.yrel / windowExtent.height;
-			break;
-		}
-		default: break;
-		}
+  while (SDL_PollEvent(&e) != 0)
+  {
+    switch (e.type) {
+    case SDL_QUIT: input.quit = true; break;
+    case SDL_KEYDOWN:
+      switch (e.key.keysym.sym)
+      {
+        case SDLK_ESCAPE: input.quit = true; break;
+        case SDLK_SPACE: break;
+        case SDLK_LSHIFT: input.button1 = true; break;
+        case SDLK_a: case SDLK_LEFT: input.left = true; break;
+        case SDLK_d: case SDLK_RIGHT: input.right = true; break;
+        case SDLK_w: case SDLK_UP: input.forward = true; break;
+        case SDLK_s: case SDLK_DOWN: input.back = true; break;
+        case SDLK_q: input.down = true; break;
+        case SDLK_e: input.up = true; break;
+        case SDLK_LALT: case SDLK_RALT: altDown = true; break;
+      }
+      break;
+    case SDL_KEYUP:
+      switch (e.key.keysym.sym)
+      {
+        case SDLK_SPACE: input.switch1 = !input.switch1; break;
+        case SDLK_a: case SDLK_LEFT: input.left = false; break;
+        case SDLK_d: case SDLK_RIGHT: input.right = false; break;
+        case SDLK_w: case SDLK_UP: input.forward = false; break;
+        case SDLK_s: case SDLK_DOWN: input.back = false; break;
+        case SDLK_q: input.down = false; break;
+        case SDLK_e: input.up = false;break;
+        case SDLK_LALT: case SDLK_RALT: altDown = false; break;
+        case SDLK_RETURN: if (altWasDown) { input.fullscreen = !input.fullscreen; } break;
+        case SDLK_TAB: imguiState.mainMenu = !imguiState.mainMenu; break;
+      }
+      break;
+    case SDL_MOUSEMOTION:
+    {
+      input.mouseDeltaX += (f32)e.motion.xrel / windowExtent.width;
+      input.mouseDeltaY += (f32)e.motion.yrel / windowExtent.height;
+      break;
+    }
+    default: break;
+    }
 
     // also send input to ImGui
     ImGui_ImplSDL2_ProcessEvent(&e);
+  }
+}
+
+void VulkanEngine::quickDebugText(const char* fmt, ...) const {
+  if(imguiState.generalDebug) {
+    va_list args;
+    va_start(args, fmt);
+    ImGui::TextV(fmt, args);
+    va_end(args);
+  }
+}
+
+void VulkanEngine::quickDebugFloat(const char* label, float* v, float v_min, float v_max, const char* format, ImGuiSliderFlags flags) const {
+  if(imguiState.generalDebug) {
+    ImGui::SliderFloat(label, v, v_min, v_max, format, flags);
   }
 }
 
@@ -270,8 +286,7 @@ void VulkanEngine::update() {
     input.mouseDeltaY = 0.0f;
   }
 
-  ImGui::SliderFloat("move speed", &moveSpeed, 0.1f, 1.0f, "%.2f");
-  ImGui::SliderFloat("turn speed", &turnSpeed, 0.1f, 1.0f, "%.2f");
+  quickDebugFloat("move speed", &moveSpeed, 0.1f, 1.0f, "%.2f");
 
   camera.move(cameraDelta * (invSqrt[invSqrtIndex] * moveSpeed));
 }
@@ -396,6 +411,10 @@ void VulkanEngine::initImgui() {
     VK_CHECK(vkDeviceWaitIdle(device));
     ImGui_ImplVulkan_DestroyFontUploadObjects();
   }
+
+  imguiState = {};
+  imguiState.mainMenu = true;
+  imguiState.fps = true;
 
   mainDeletionQueue.pushFunction([=]() {
     vkDestroyDescriptorPool(device, imguiDescriptorPool, nullptr);
@@ -1173,7 +1192,7 @@ void VulkanEngine::drawObjects(VkCommandBuffer cmd, RenderObject* firstObject, u
   objectData = nullptr;
   vmaUnmapMemory(vmaAllocator, frame.objectBuffer.vmaAllocation);
   f64 ssboUploadTimeMs = StopTimer(ssboUploadTimer);
-  ImGui::Text("Uploading SSBO data: %5.5f ms", ssboUploadTimeMs);
+  quickDebugText("Uploading SSBO data: %5.5f ms", ssboUploadTimeMs);
 
   VkViewport viewport{};
   viewport.x = 0;
@@ -1251,7 +1270,7 @@ void VulkanEngine::drawObjects(VkCommandBuffer cmd, RenderObject* firstObject, u
   }
 
   f64 objectCmdBufferFillMs = StopTimer(objectCmdBufferFillTimer);
-  ImGui::Text("Filling command buffer for object draws: %5.5f ms", objectCmdBufferFillMs);
+  quickDebugText("Filling command buffer for object draws: %5.5f ms", objectCmdBufferFillMs);
 }
 
 void VulkanEngine::startImguiFrame() {
@@ -1259,20 +1278,30 @@ void VulkanEngine::startImguiFrame() {
   ImGui_ImplSDL2_NewFrame(window);
   ImGui::NewFrame();
 
-  // start rendering debug imgui
-  local_access bool imguiOpen = true;
-  ImGui::Begin("Debug Etc.", &imguiOpen, 0);
+  if(imguiState.mainMenu) {
+    if(ImGui::BeginMainMenuBar()) {
+      if(ImGui::BeginMenu("Windows")) {
+        ImGui::MenuItem("Quick Debug Log", NULL, &imguiState.generalDebug);
+        ImGui::MenuItem("Main Debug Menu", NULL, &imguiState.mainMenu);
+        ImGui::MenuItem("FPS", NULL, &imguiState.fps);
+        ImGui::EndMenu();
+      }ImGui::EndMainMenuBar();
+    }
+  }
+
   local_access Timer frameTimer;
   f64 frameTimeMs = StopTimer(frameTimer); // for last frame
   f64 frameFPS = 1000.0 / frameTimeMs;
-  ImGui::Text("Frame time: %5.5f ms, %5.5f FPS", frameTimeMs, frameFPS);
+  if(imguiState.fps) {
+    const ImGuiWindowFlags textNoFrills = ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoResize;
+    if(ImGui::Begin("FPS", &imguiState.fps, textNoFrills)) {
+      ImGui::Text("%5.2f ms | %3.1f fps", frameTimeMs, frameFPS);
+    }ImGui::End();
+  }
   StartTimer(frameTimer); // for current frame
 }
 
 void VulkanEngine::renderImgui(VkCommandBuffer cmd) {
-  // end rendering debug imgui window
-  ImGui::End();
-
   // Rendering
   ImGui::Render();
 
