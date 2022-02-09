@@ -4,7 +4,7 @@
 /.vs
 /.idea
 /.github
-/assets
+/assets*
 /third_party/*/
 /shaders/spv
 CMakeSettings.json

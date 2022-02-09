@@ -5,11 +5,12 @@ add_library(glm INTERFACE)
 add_library(vma INTERFACE)
 
 add_library(stb_image INTERFACE)
-
+add_library(json INTERFACE)
 add_library(tinyobjloader STATIC)
 add_library(tinygltf STATIC)
 
 add_library(spirv_reflect STATIC)
+add_library(lz4 STATIC)
 
 target_sources(vkbootstrap PRIVATE 
     vkbootstrap/VkBootstrap.h
@@ -22,6 +23,8 @@ target_link_libraries(vkbootstrap PUBLIC Vulkan::Vulkan $<$<BOOL:UNIX>:${CMAKE_D
 #both vma and glm and header only libs so we only need the include path
 target_include_directories(vma INTERFACE vma)
 target_include_directories(glm INTERFACE glm)
+
+target_include_directories(json INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}/nlohmann_json" )
 
 target_sources(tinyobjloader PRIVATE 
     tinyobjloader/tiny_obj_loader.h
@@ -37,6 +40,7 @@ target_sources(tinygltf PRIVATE
 target_include_directories(tinygltf PUBLIC 
     tinygltf
     stb_image
+    nlohmann_json
     )
 
 target_sources(spirv_reflect PRIVATE
@@ -47,6 +51,12 @@ target_include_directories(spirv_reflect PUBLIC
     spirv_reflect
     )
 
+target_sources(lz4 PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/lz4/lz4.h"
+        "${CMAKE_CURRENT_SOURCE_DIR}/lz4/lz4.c"
+)
+
+target_include_directories(lz4 PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/lz4" )
 
 add_library(sdl2 INTERFACE)
 set(sdl2_DIR "SDL_PATH" CACHE PATH "Path to SDL2")
