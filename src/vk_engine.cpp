@@ -179,7 +179,7 @@ void VulkanEngine::processInput() {
         case SDLK_e: input.up = false;break;
         case SDLK_LALT: case SDLK_RALT: altDown = false; break;
         case SDLK_RETURN: if (altWasDown) { input.fullscreen = !input.fullscreen; } break;
-        case SDLK_TAB: imguiState.mainMenu = !imguiState.mainMenu; break;
+        case SDLK_TAB: imguiState.showMainMenu = !imguiState.showMainMenu; break;
       }
       break;
     case SDL_MOUSEMOTION:
@@ -197,7 +197,7 @@ void VulkanEngine::processInput() {
 }
 
 void VulkanEngine::quickDebugText(const char* fmt, ...) const {
-  if(imguiState.generalDebug) {
+  if(imguiState.showGeneralDebug) {
     va_list args;
     va_start(args, fmt);
     ImGui::TextV(fmt, args);
@@ -206,7 +206,7 @@ void VulkanEngine::quickDebugText(const char* fmt, ...) const {
 }
 
 void VulkanEngine::quickDebugFloat(const char* label, float* v, float v_min, float v_max, const char* format, ImGuiSliderFlags flags) const {
-  if(imguiState.generalDebug) {
+  if(imguiState.showGeneralDebug) {
     ImGui::SliderFloat(label, v, v_min, v_max, format, flags);
   }
 }
@@ -216,7 +216,7 @@ void VulkanEngine::update() {
   local_access f32 turnSpeed = 0.5f;
   local_access bool editMode = true; // NOTE: We assume edit mode is enabled by default
   local_access bool fullscreened = false; // NOTE: We assume windowed by default
-  glm::vec3 cameraDelta = {};
+  vec3 cameraDelta = {};
   f32 yawDelta = 0.0f;
   f32 pitchDelta = 0.0f;
 
@@ -240,7 +240,7 @@ void VulkanEngine::update() {
   }
 
   // Used to keep camera at constant speed regardless of direction
-  const f32 invSqrt[4] = {
+  const vec4 invSqrt = {
           0.0f,
           1.0f,
           0.7071067f,
@@ -288,7 +288,7 @@ void VulkanEngine::update() {
 
   quickDebugFloat("move speed", &moveSpeed, 0.1f, 1.0f, "%.2f");
 
-  camera.move(cameraDelta * (invSqrt[invSqrtIndex] * moveSpeed));
+  camera.move(cameraDelta * (invSqrt.val[invSqrtIndex] * moveSpeed));
 }
 
 FrameData& VulkanEngine::getCurrentFrame() {
@@ -413,12 +413,8 @@ void VulkanEngine::initImgui() {
   }
 
   imguiState = {};
-  imguiState.mainMenu = true;
-  imguiState.fps = true;
-
-  mainDeletionQueue.pushFunction([=]() {
-    vkDestroyDescriptorPool(device, imguiDescriptorPool, nullptr);
-    ImGui_ImplVulkan_Shutdown();
+  imguiState.showMainMenu = true;
+  imguiState.showFPS = true;
   });
 }
 
@@ -430,7 +426,7 @@ void VulkanEngine::initVulkan() {
           .request_validation_layers(true)
           .require_api_version(1, 1, 0)
           .use_default_debug_messenger()
-                  //.enable_extension("VK_KHR_Maintenance1") // needed for Vulkan versions <1.1 when using negative viewport valuesto perform y-inversion of the clip space
+          //.enable_extension("VK_KHR_Maintenance1") // needed for Vulkan versions <1.1 when using negative viewport valuesto perform y-inversion of the clip space
           .build()
           .value();
 
@@ -869,51 +865,8 @@ void VulkanEngine::createPipeline(MaterialCreateInfo matInfo) {
 }
 
 void VulkanEngine::initScene() {
-  /*
-	RenderObject focusObject;
-	focusObject.mesh = getMesh("mrSaturn");
-	focusObject.materialName = materialDefaultLit.name;
-	focusObject.material = getMaterial(focusObject.materialName);
-	f32 focusScale = 20.0f;
-	glm::mat4 focusScaleMat = glm::scale(glm::mat4{ 1.0 }, glm::vec3(focusScale, focusScale, focusScale));
-	glm::mat4 focusTranslationMat = glm::translate(glm::mat4{ 1.0 }, glm::vec3(0.0f, 0.0f, -focusScale * 2.0f));
-	glm::mat4 focusTransform = focusTranslationMat * focusScaleMat;
-	focusObject.modelMatrix = focusTransform;
-	focusObject.defaultColor = glm::vec4(155.0f / 255.0f, 115.0f / 255.0f, 96.0f / 255.0f, 1.0f);
-	renderables.push_back(focusObject);
 
-	RenderObject environmentObject;
-	environmentObject.mesh = getMesh("cube");
-	environmentObject.materialName = materialDefaulColor.name;
-	environmentObject.material = getMaterial(environmentObject.materialName);
-	f32 envScale = 0.2f;
-	glm::mat4 envScaleMat = glm::scale(glm::mat4{ 1.0 }, glm::vec3(envScale, envScale, envScale));
-	for (s32 x = -16; x <= 16; ++x)
-	for (s32 y = -16; y <= 16; ++y)
-	for (s32 z = 0; z <= 32; ++z) {
-		glm::vec3 pos{ x, y, z };
-		glm::vec3 color = (pos + glm::vec3(16.0f, 16.0f, 0.0f)) / glm::vec3(32.0f, 32.0f, 32.0f);
-		glm::mat4 translationMat = glm::translate(glm::mat4{ 1.0 }, pos);
-		environmentObject.modelMatrix = translationMat * envScaleMat;
-		environmentObject.defaultColor = glm::vec4(color, 1.0f);
-		renderables.push_back(environmentObject);
-	}
-   */
-
-
-  RenderObject focusObject;
-  focusObject.mesh = getMesh("empire");
-  focusObject.materialName = materialTextured.name;
-  focusObject.material = getMaterial(focusObject.materialName);
-  focusObject.defaultColor = glm::vec4(50.0f, 0.0f, 0.0f, 1.0f);
-
-  f32 focusScale = 1.0f;
-  glm::mat4 focusScaleMat = glm::scale(glm::mat4{1.0}, glm::vec3(focusScale, focusScale, focusScale));
-  glm::mat4 focusRotationMat = glm::rotate(RadiansPerDegree * 90.0f, glm::vec3(1.0f, 0.0f, 0.0f));
-  glm::mat4 focusTranslationMat = glm::translate(glm::mat4{1.0}, glm::vec3(0.0f, 0.0f, 0.0f));
-  glm::mat4 focusTransform = focusTranslationMat * focusRotationMat * focusScaleMat;
-  focusObject.modelMatrix = focusTransform;
-
+  // Samplers //
   VkSamplerCreateInfo samplerInfo = vkinit::samplerCreateInfo(VK_FILTER_NEAREST);
 
   VkSampler blockySampler;
@@ -927,19 +880,70 @@ void VulkanEngine::initScene() {
   allocInfo.descriptorSetCount = 1;
   allocInfo.pSetLayouts = &singleTextureSetLayout;
 
-  vkAllocateDescriptorSets(device, &allocInfo, &focusObject.textureSet);
+  auto attachTexture = [&](VkSampler sampler, const char* loadedTexture, VkDescriptorSet* textureSet) -> void {
+    vkAllocateDescriptorSets(device, &allocInfo, textureSet);
 
-  //write to the descriptor set so that it points to our empire_diffuse texture
-  VkDescriptorImageInfo imageBufferInfo;
-  imageBufferInfo.sampler = blockySampler;
-  imageBufferInfo.imageView = loadedTextures["empire_diffuse"].imageView;
-  imageBufferInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    //write to the descriptor set so that it points to our minecraft_diffuse texture
+    VkDescriptorImageInfo imageBufferInfo;
+    imageBufferInfo.sampler = blockySampler;
+    imageBufferInfo.imageView = loadedTextures[loadedTexture].imageView;
+    imageBufferInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 
-  VkWriteDescriptorSet texture = vkinit::writeDescriptorImage(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, focusObject.textureSet, &imageBufferInfo, 0);
+    VkWriteDescriptorSet texture = vkinit::writeDescriptorImage(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, *textureSet, &imageBufferInfo, 0);
 
-  vkUpdateDescriptorSets(device, 1, &texture, 0, nullptr);
+    vkUpdateDescriptorSets(device, 1, &texture, 0, nullptr);
+  };
 
-  renderables.push_back(focusObject);
+  // Renderables //
+  // Mr. Saturn
+//	RenderObject mrSaturnObject;
+//  mrSaturnObject.mesh = getMesh(bakedMeshAssetData.mr_saturn.name);
+//  mrSaturnObject.materialName = materialDefaultLit.name;
+//  mrSaturnObject.material = getMaterial(mrSaturnObject.materialName);
+//	f32 focusScale = 20.0f;
+//	mat4 focusScaleMat = scale_mat4(vec3{focusScale, focusScale, focusScale});
+//	mat4 focusTranslationMat = translate_mat4(vec3{0.0f, 0.0f, -focusScale * 2.0f});
+//	mat4 focusTransform = focusTranslationMat * focusScaleMat;
+//  mrSaturnObject.modelMatrix = focusTransform;
+//  mrSaturnObject.defaultColor = vec4{155.0f / 255.0f, 115.0f / 255.0f, 96.0f / 255.0f, 1.0f};
+//  attachTexture(blockySampler, "default", &mrSaturnObject.textureSet);
+//	renderables.push_back(mrSaturnObject);
+//
+//  // Cubes //
+//	RenderObject cubeObject;
+//  cubeObject.mesh = getMesh(bakedMeshAssetData.cube.name);
+//  cubeObject.materialName = materialDefaulColor.name;
+//  cubeObject.material = getMaterial(cubeObject.materialName);
+//  attachTexture(blockySampler, "default", &cubeObject.textureSet);
+//	f32 envScale = 0.2f;
+//	mat4 envScaleMat = scale_mat4(vec3{envScale, envScale, envScale});
+//	for (s32 x = -16; x <= 16; ++x)
+//	for (s32 y = -16; y <= 16; ++y)
+//	for (s32 z = 0; z <= 32; ++z) {
+//		vec3 pos{ (f32)x, (f32)y, (f32)z };
+//		vec3 color = (pos + vec3{16.0f, 16.0f, 0.0f}) / vec3{32.0f, 32.0f, 32.0f};
+//		mat4 translationMat = translate_mat4(pos);
+//    cubeObject.modelMatrix = translationMat * envScaleMat;
+//    cubeObject.defaultColor = vec4{color.r, color.g, color.b, 1.0f}; // TODO: lookup how glm accomplishes vec4{vec3, f32} construction
+//		renderables.push_back(cubeObject);
+//	}
+
+  // Minecraft World
+  RenderObject minecraftObject;
+  minecraftObject.mesh = getMesh(bakedMeshAssetData.lost_empire.name);
+  minecraftObject.materialName = materialTextured.name;
+  minecraftObject.material = getMaterial(minecraftObject.materialName);
+  minecraftObject.defaultColor = vec4{50.0f, 0.0f, 0.0f, 1.0f};
+  attachTexture(blockySampler, "minecraft_diffuse", &minecraftObject.textureSet);
+
+  f32 focusScale = 1.0f;
+  mat4 focusScaleMat = scale_mat4(vec3{focusScale, focusScale, focusScale});
+  mat4 focusRotationMat = rotate_mat4(RadiansPerDegree * 90.0f, vec3{1.0f, 0.0f, 0.0f});
+  mat4 focusTranslationMat = translate_mat4(vec3{0.0f, 0.0f, 0.0f});
+  mat4 focusTransform = focusTranslationMat * focusRotationMat * focusScaleMat;
+  minecraftObject.modelMatrix = focusTransform;
+
+  renderables.push_back(minecraftObject);
 
   // TODO: sort objects by material to minimize binding pipelines
   //std::sort(renderables.begin(), renderables.end(), [](const RenderObject& a, const RenderObject& b) {
@@ -958,39 +962,26 @@ void VulkanEngine::initCamera() {
 }
 
 void VulkanEngine::loadMeshes() {
-  struct ModelData {
-    const char* modelFile;
-    const char* meshName;
-  } const modelData[] = {
-          {
-                  "../assets/cube.glb",
-                  "cube"
-          },
-          {
-                  "../assets/mr_saturn.glb",
-                  "mrSaturn"
-          },
-          {
-                  "../assets/lost_empire.obj",
-                  "empire"
-          },
-  };
 
-  for(u32 i = 0; i < ArrayCount(modelData); i++) {
-    const ModelData& model = modelData[i];
+  BakedAssetData* bakedMeshes = (BakedAssetData*)(&bakedMeshAssetData);
+  u32 meshCount = bakedMeshAssetCount();
+  for(u32 i = 0; i < meshCount; i++) {
+    const BakedAssetData& bakedMeshData = bakedMeshes[i];
+
     Mesh mesh{};
-    mesh.loadFromFile(model.modelFile);
+    mesh.loadFromAsset(bakedMeshData.filePath);
     mesh.uploadMesh(vmaAllocator);
-    meshes[model.meshName] = mesh;
+    meshes[bakedMeshData.name] = mesh;
   }
 
   mainDeletionQueue.pushFunction([=]() {
-    for(u32 i = 0; i < ArrayCount(modelData); i++) {
-      const ModelData& model = modelData[i];
-      Mesh mesh = meshes[model.meshName];
-      meshes.erase(model.meshName);
+    u32 meshCount = bakedMeshAssetCount();
+    for(u32 i = 0; i < meshCount; i++) {
+      const BakedAssetData& bakedMeshData = bakedMeshes[i];
+      const Mesh& mesh = meshes[bakedMeshData.name];
       vmaDestroyBuffer(vmaAllocator, mesh.vertexBuffer.vkBuffer, mesh.vertexBuffer.vmaAllocation);
     }
+    meshes.clear();
   });
 }
 
@@ -1028,7 +1019,7 @@ void VulkanEngine::uploadMesh(Mesh& mesh) {
                            &mesh.vertexBuffer.vmaAllocation,
                            nullptr));
 
-  vkutil::immediateSubmit(uploadContext, [=](VkCommandBuffer cmd) {
+  vkutil::immediateSubmit(uploadContext, [=](VkCommandBuffer cmd) -> void {
     VkBufferCopy copy;
     copy.dstOffset = 0;
     copy.srcOffset = 0;
@@ -1128,6 +1119,7 @@ Mesh* VulkanEngine::getMesh(const std::string& name) {
 
 void VulkanEngine::drawFragmentShader(VkCommandBuffer cmd) {
   vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, fragmentShaderPipeline);
+  // vkCmdBindDescriptorSets() not needed as descriptor count set is 0
 
   VkViewport viewport{};
   viewport.x = 0;
@@ -1154,7 +1146,7 @@ void VulkanEngine::drawObjects(VkCommandBuffer cmd, RenderObject* firstObject, u
   // camera data
   GPUCameraData cameraData;
   cameraData.view = camera.getViewMatrix();
-  cameraData.projection = glm::perspective(glm::radians(70.f), 1700.f / 900.f, 0.1f, 200.0f);
+  cameraData.projection = perspective(radians(70.f), 1700.f / 900.f, 0.1f, 200.0f);
   cameraData.viewproj = cameraData.projection * cameraData.view;
   // scene data
   GPUSceneData sceneData;
@@ -1278,12 +1270,12 @@ void VulkanEngine::startImguiFrame() {
   ImGui_ImplSDL2_NewFrame(window);
   ImGui::NewFrame();
 
-  if(imguiState.mainMenu) {
+  if(imguiState.showMainMenu) {
     if(ImGui::BeginMainMenuBar()) {
       if(ImGui::BeginMenu("Windows")) {
-        ImGui::MenuItem("Quick Debug Log", NULL, &imguiState.generalDebug);
-        ImGui::MenuItem("Main Debug Menu", NULL, &imguiState.mainMenu);
-        ImGui::MenuItem("FPS", NULL, &imguiState.fps);
+        ImGui::MenuItem("Quick Debug Log", NULL, &imguiState.showGeneralDebug);
+        ImGui::MenuItem("Main Debug Menu", NULL, &imguiState.showMainMenu);
+        ImGui::MenuItem("FPS", NULL, &imguiState.showFPS);
         ImGui::EndMenu();
       }ImGui::EndMainMenuBar();
     }
@@ -1292,10 +1284,10 @@ void VulkanEngine::startImguiFrame() {
   local_access Timer frameTimer;
   f64 frameTimeMs = StopTimer(frameTimer); // for last frame
   f64 frameFPS = 1000.0 / frameTimeMs;
-  if(imguiState.fps) {
+  if(imguiState.showFPS) {
     const ImGuiWindowFlags textNoFrills = ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoResize;
-    if(ImGui::Begin("FPS", &imguiState.fps, textNoFrills)) {
-      ImGui::Text("%5.2f ms | %3.1f fps", frameTimeMs, frameFPS);
+    if(ImGui::Begin("FPS", &imguiState.showFPS, textNoFrills)) {
+      ImGui::Text("%5.2f ms | %3.1f showFPS", frameTimeMs, frameFPS);
     }ImGui::End();
   }
   StartTimer(frameTimer); // for current frame
@@ -1310,12 +1302,23 @@ void VulkanEngine::renderImgui(VkCommandBuffer cmd) {
 }
 
 void VulkanEngine::loadImages() {
-  Texture lostEmpire;
+  Texture minecraftTex;
 
-  vkutil::loadImageFromFile(vmaAllocator, uploadContext, "../assets/lost_empire-RGBA.png", lostEmpire.image);
+  // TODO: replace with getting info from assets
+  vkutil::loadImageFromFile(vmaAllocator, uploadContext, "assets/lost_empire-RGBA.png", minecraftTex.image);
 
-  VkImageViewCreateInfo imageinfo = vkinit::imageViewCreateInfo(VK_FORMAT_R8G8B8A8_SRGB, lostEmpire.image.vkImage, VK_IMAGE_ASPECT_COLOR_BIT);
-  vkCreateImageView(device, &imageinfo, nullptr, &lostEmpire.imageView);
+  VkImageViewCreateInfo imageCreateInfo = vkinit::imageViewCreateInfo(VK_FORMAT_R8G8B8A8_SRGB, minecraftTex.image.vkImage, VK_IMAGE_ASPECT_COLOR_BIT);
+  vkCreateImageView(device, &imageCreateInfo, nullptr, &minecraftTex.imageView);
 
-  loadedTextures["empire_diffuse"] = lostEmpire;
+  loadedTextures["minecraft_diffuse"] = minecraftTex;
+
+//  Texture defaultTex{};
+//
+//  // TODO: replace with getting info from assets
+//  vkutil::loadImageFromFile(vmaAllocator, uploadContext, "assets/single_white_pixel.png", defaultTex.image);
+//
+//  imageCreateInfo = vkinit::imageViewCreateInfo(VK_FORMAT_R8G8B8A8_SRGB, defaultTex.image.vkImage, VK_IMAGE_ASPECT_COLOR_BIT);
+//  vkCreateImageView(device, &imageCreateInfo, nullptr, &defaultTex.imageView);
+//
+//  loadedTextures["default"] = defaultTex;
 }

@@ -13,8 +13,8 @@ namespace assets {
 	};
 
 	struct MaterialInfo {
-		std::string baseEffect;
-		std::unordered_map<std::string, std::string> textures; //name -> path
+		std::string baseEffect; // info about shader to use (ex: "defaultPBR")
+		std::unordered_map<std::string /* name */, std::string /* path */> textures;
 		std::unordered_map<std::string, std::string> customProperties;
 		TransparencyMode transparency;
 	};

@@ -27,7 +27,7 @@ namespace assets {
   };
 
   bool saveAssetFile(const char* path, const AssetFile& file);
-  bool loadAssetFile(const char* path, AssetFile& outputFile);
+  bool loadAssetFile(const char* path, AssetFile* outputFile);
 
   const char* compressionModeToString(CompressionMode compressionMode);
   u32 compressionModeToEnumVal(CompressionMode compressionMode);

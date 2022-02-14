@@ -14,11 +14,9 @@
 #include <SDL.h>
 #include <SDL_vulkan.h>
 
-#include <stb_image.h>
-#include <tiny_obj_loader.h>
-#include <tiny_gltf.h>
+#include <stb_image.h> // TODO: remove?
 
-#include <spirv_reflect.h>
+#include <spirv_reflect.h> // TODO: remove?
 
 #include <glm/gtx/transform.hpp>
 #include <glm/glm.hpp>
@@ -39,7 +37,9 @@
 
 #include "types.h"
 #include "vk_types.h"
+#include "noop_math.h"
 #include "util.h"
+#include "cstring_ring_buffer.h"
 #include "camera.h"
 #include "vk_util.h"
 #include "vk_initializers.h"
@@ -48,6 +48,13 @@
 #include "materials.h"
 #include "vk_pipeline_builder.h"
 #include "vk_engine.h"
+
+#include "asset_loader.h"
+#include "texture_asset.h"
+#include "mesh_asset.h"
+#include "material_asset.h"
+#include "prefab_asset.h"
+
 #include "baked_assets.h"
 
 #include "camera.cpp"

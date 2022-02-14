@@ -6,20 +6,27 @@ struct VertexInputDescription {
 };
 
 struct Vertex {
-  glm::vec3 position;
-  glm::vec3 normal;
-  glm::vec3 color;
-  glm::vec2 uv;
+  vec3 position;
+  vec3 normal;
+  vec3 color;
+  vec2 uv;
 
   static VertexInputDescription getVertexDescriptions();
+};
+
+struct RenderBounds {
+  vec3 origin;
+  float radius;
+  vec3 extents;
+  bool valid;
 };
 
 struct Mesh {
   std::vector<Vertex> vertices;
   AllocatedBuffer vertexBuffer;
+  // TODO: Index buffer
+  RenderBounds bounds;
 
-  bool loadFromFile(const char* fileName);
-  bool loadFromGltf(const char* fileName);
-  bool loadFromObj(const char* filename);
+  bool loadFromAsset(const char* fileName);
   AllocatedBuffer uploadMesh(VmaAllocator vmaAllocator);
 };

@@ -27,96 +27,95 @@ const struct {
 const char* vertexFormatToString(assets::VertexFormat format);
 u32 vertexFormatToEnumVal(assets::VertexFormat format);
 
-assets::MeshInfo assets::readMeshInfo(AssetFile* file)
+void assets::readMeshInfo(const AssetFile& assetFile, MeshInfo* meshInfo)
 {
-	MeshInfo info;
+	nlohmann::json meshJson = nlohmann::json::parse(assetFile.json);
 
-	nlohmann::json meshJson = nlohmann::json::parse(file->json);
+	meshInfo->vertexBufferSize = meshJson[jsonKeys.vertexBufferSize];
 
-	info.vertexBufferSize = meshJson[jsonKeys.vertexBufferSize];
-	info.indexBufferSize = meshJson[jsonKeys.indexBufferSize];
-	info.indexSize = static_cast<u8>(meshJson[jsonKeys.indexSize]);
-	info.originalFile = meshJson[jsonKeys.originalFile];
+  // TODO: Indices
+  //meshInfo->indexBufferSize = meshJson[jsonKeys.indexBufferSize];
+	//meshInfo->indexSize = static_cast<u8>(meshJson[jsonKeys.indexSize]);
+
+	meshInfo->originalFile = meshJson[jsonKeys.originalFile];
 
 	std::string compressionString = meshJson[jsonKeys.compressionMode];
   u32 compressionModeEnumVal = meshJson[jsonKeys.compressionModeEnumVal];
-	info.compressionMode = CompressionMode(compressionModeEnumVal);
+	meshInfo->compressionMode = CompressionMode(compressionModeEnumVal);
 
 	std::vector<f32> boundsData;
 	boundsData.reserve(7);
 	boundsData = meshJson[jsonKeys.bounds].get<std::vector<f32>>();
 
-	info.bounds.origin[0] = boundsData[0];
-	info.bounds.origin[1] = boundsData[1];
-	info.bounds.origin[2] = boundsData[2];
-		
-	info.bounds.radius = boundsData[3];
-	
-	info.bounds.extents[0] = boundsData[4];
-	info.bounds.extents[1] = boundsData[5];
-	info.bounds.extents[2] = boundsData[6];
+	meshInfo->bounds.origin[0] = boundsData[0];
+	meshInfo->bounds.origin[1] = boundsData[1];
+	meshInfo->bounds.origin[2] = boundsData[2];
+
+	meshInfo->bounds.radius = boundsData[3];
+
+	meshInfo->bounds.extents[0] = boundsData[4];
+	meshInfo->bounds.extents[1] = boundsData[5];
+	meshInfo->bounds.extents[2] = boundsData[6];
 
 	std::string vertexFormat = meshJson[jsonKeys.vertexFormat];
   u32 vertexFormatEnumVal = meshJson[jsonKeys.vertexFormatEnumVal];
-	info.vertexFormat = VertexFormat(vertexFormatEnumVal);
-
-  return info;
+	meshInfo->vertexFormat = VertexFormat(vertexFormatEnumVal);
 }
 
-void assets::unpackMesh(MeshInfo* info, const char* srcBuffer, size_t sourceSize, char* dstVertexBuffer, char* dstIndexBuffer)
+void assets::unpackMesh(const MeshInfo& info, const char* srcBuffer, size_t sourceSize, char* dstVertexBuffer, char* dstIndexBuffer)
 {
 	std::vector<char> decompressedBuffer;
-  const u64 decompressedBufferSize = info->vertexBufferSize + info->indexBufferSize;
+  const u64 decompressedBufferSize = info.vertexBufferSize;// + info->indexBufferSize;
 	decompressedBuffer.resize(decompressedBufferSize);
 
 	LZ4_decompress_safe(srcBuffer, decompressedBuffer.data(), (s32)sourceSize, (s32)decompressedBufferSize);
 
 	//copy vertex buffer
-	memcpy(dstVertexBuffer, decompressedBuffer.data(), info->vertexBufferSize);
+	memcpy(dstVertexBuffer, decompressedBuffer.data(), decompressedBufferSize);
 
 	//copy index buffer
-	memcpy(dstIndexBuffer, decompressedBuffer.data() + info->vertexBufferSize, info->indexBufferSize);
+	//memcpy(dstIndexBuffer, decompressedBuffer.data() + info.vertexBufferSize, info.indexBufferSize);
 }
 
-assets::AssetFile assets::packMesh(MeshInfo* info, char* vertexData, char* indexData)
+assets::AssetFile assets::packMesh(const MeshInfo& meshInfo, char* vertexData, char* indexData)
 {
   AssetFile file;
   strncpy(file.type, MESH_FOURCC, 4);
 	file.version = ASSET_LIB_VERSION;
 
 	nlohmann::json meshJson;
-  meshJson[jsonKeys.vertexFormat] = vertexFormatToString(info->vertexFormat);
-  meshJson[jsonKeys.vertexFormatEnumVal] = vertexFormatToEnumVal(info->vertexFormat);
-  meshJson[jsonKeys.vertexBufferSize] = info->vertexBufferSize;
-  meshJson[jsonKeys.indexBufferSize] = info->indexBufferSize;
-  meshJson[jsonKeys.indexSize] = info->indexSize;
-  meshJson[jsonKeys.originalFile] = info->originalFile;
+  meshJson[jsonKeys.vertexFormat] = vertexFormatToString(meshInfo.vertexFormat);
+  meshJson[jsonKeys.vertexFormatEnumVal] = vertexFormatToEnumVal(meshInfo.vertexFormat);
+  meshJson[jsonKeys.vertexBufferSize] = meshInfo.vertexBufferSize;
+  //meshJson[jsonKeys.indexBufferSize] = meshInfo.indexBufferSize;
+  //meshJson[jsonKeys.indexSize] = meshInfo.indexSize;
+  meshJson[jsonKeys.originalFile] = meshInfo.originalFile;
 
 	std::vector<float> boundsData;
 	boundsData.resize(7);
 
-	boundsData[0] = info->bounds.origin[0];
-	boundsData[1] = info->bounds.origin[1];
-	boundsData[2] = info->bounds.origin[2];
+	boundsData[0] = meshInfo.bounds.origin[0];
+	boundsData[1] = meshInfo.bounds.origin[1];
+	boundsData[2] = meshInfo.bounds.origin[2];
 
-	boundsData[3] = info->bounds.radius;
+	boundsData[3] = meshInfo.bounds.radius;
 
-	boundsData[4] = info->bounds.extents[0];
-	boundsData[5] = info->bounds.extents[1];
-	boundsData[6] = info->bounds.extents[2];
+	boundsData[4] = meshInfo.bounds.extents[0];
+	boundsData[5] = meshInfo.bounds.extents[1];
+	boundsData[6] = meshInfo.bounds.extents[2];
 
   meshJson[jsonKeys.bounds] = boundsData;
 
-	size_t fullSize = info->vertexBufferSize + info->indexBufferSize;
+	size_t fullSize = meshInfo.vertexBufferSize;// + meshInfo.indexBufferSize;
 
 	std::vector<char> mergedBuffer;
 	mergedBuffer.resize(fullSize);
 
 	//copy vertex buffer
-	memcpy(mergedBuffer.data(), vertexData, info->vertexBufferSize);
+	memcpy(mergedBuffer.data(), vertexData, meshInfo.vertexBufferSize);
 
 	//copy index buffer
-	memcpy(mergedBuffer.data() + info->vertexBufferSize, indexData, info->indexBufferSize);
+	//memcpy(mergedBuffer.data() + meshInfo.vertexBufferSize, indexData, meshInfo.indexBufferSize);
 
 	//compress buffer and copy it into the file struct
 	size_t worstCaseCompressionSize = LZ4_compressBound(static_cast<int>(fullSize));

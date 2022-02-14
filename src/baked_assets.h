@@ -1,25 +1,34 @@
 #pragma once
 
-struct {
-#define BakedMaterial(name, filePath) const char* name = filePath;
+struct BakedAssetData {
+  const char* name;
+  const char* filePath;
+};
+
+struct BakedMaterials {
+#define BakedMaterial(name, filePath) const BakedAssetData name = {#name, filePath};
 #include "../assets_metadata/baked_materials.incl"
 #undef BakedMaterial
-} bakedMaterials;
+} bakedMaterialAssetData;
 
-struct {
-#define BakedMesh(name, filePath) const char* name = filePath;
+struct BakedMeshes {
+#define BakedMesh(name, filePath) const BakedAssetData name = {#name, filePath};
 #include "../assets_metadata/baked_meshes.incl"
 #undef BakedMesh
-} bakedMeshes;
+} bakedMeshAssetData;
 
-struct {
-#define BakedTexture(name, filePath) const char* name = filePath;
+struct BakedTextures {
+#define BakedTexture(name, filePath) const BakedAssetData name = {#name, filePath};
 #include "../assets_metadata/baked_textures.incl"
 #undef BakedTexture
-} bakedTextures;
+} bakedTextureAssetData;
 
-struct {
-#define BakedPrefab(name, filePath) const char* name = filePath;
+struct BakedPrefabs {
+#define BakedPrefab(name, filePath) const BakedAssetData name = {#name, filePath};
 #include "../assets_metadata/baked_prefabs.incl"
 #undef BakedPrefab
-} bakedPrefabs;
+} bakedPrefabAssetData;
+
+u32 bakedMeshAssetCount() {
+  return (sizeof(BakedMeshes) / sizeof(BakedAssetData));
+}

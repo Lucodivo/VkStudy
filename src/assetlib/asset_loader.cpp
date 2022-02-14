@@ -39,7 +39,7 @@ bool assets::saveAssetFile(const char* path, const AssetFile& file) {
   return true;
 }
 
-bool assets::loadAssetFile(const char* path, AssetFile& outputFile) {
+bool assets::loadAssetFile(const char* path, AssetFile* outputFile) {
   std::ifstream infile;
   infile.open(path, std::ios::binary);
 
@@ -49,12 +49,12 @@ bool assets::loadAssetFile(const char* path, AssetFile& outputFile) {
   infile.seekg(0);
 
   // file type
-  infile.read(outputFile.type, FILE_TYPE_SIZE_IN_BYTES);
+  infile.read(outputFile->type, FILE_TYPE_SIZE_IN_BYTES);
 
   // version
-  infile.read((char*)&outputFile.version, sizeof(u32));
-  if(outputFile.version != ASSET_LIB_VERSION) {
-    printf("Attemping to load asset with version #%d. Asset Loader version is currently #%d.", outputFile.version, ASSET_LIB_VERSION);
+  infile.read((char*)&outputFile->version, sizeof(u32));
+  if(outputFile->version != ASSET_LIB_VERSION) {
+    printf("Attempting to load asset with version #%d. Asset Loader version is currently #%d.", outputFile->version, ASSET_LIB_VERSION);
   }
 
   // json length
@@ -66,12 +66,12 @@ bool assets::loadAssetFile(const char* path, AssetFile& outputFile) {
   infile.read((char*)&blobLength, sizeof(u32));
 
   // json
-  outputFile.json.resize(jsonLength);
-  infile.read(outputFile.json.data(), jsonLength);
+  outputFile->json.resize(jsonLength);
+  infile.read(outputFile->json.data(), jsonLength);
 
   // blob
-  outputFile.binaryBlob.resize(blobLength);
-  infile.read(outputFile.binaryBlob.data(), blobLength);
+  outputFile->binaryBlob.resize(blobLength);
+  infile.read(outputFile->binaryBlob.data(), blobLength);
 
   return true;
 }
