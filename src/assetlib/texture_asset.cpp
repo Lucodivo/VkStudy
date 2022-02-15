@@ -27,23 +27,22 @@ const struct {
 const char* textureFormatToString(assets::TextureFormat format);
 u32 textureFormatToEnumVal(assets::TextureFormat format);
 
-assets::TextureInfo assets::readTextureInfo(AssetFile* file) {
-  TextureInfo info;
+void assets::readTextureInfo(const AssetFile& file, TextureInfo* texInfo) {
 
-  nlohmann::json textureJson = nlohmann::json::parse(file->json);
+  nlohmann::json textureJson = nlohmann::json::parse(file.json);
 
   const std::string& formatString = textureJson[jsonKeys.textureFormat];
   u32 textureFormatEnumVal = textureJson[jsonKeys.textureFormatEnumVal];
-  info.textureFormat = TextureFormat(textureFormatEnumVal);
+  texInfo->textureFormat = TextureFormat(textureFormatEnumVal);
 
   const std::string& compressionString = textureJson[jsonKeys.compressionMode];
   u32 compressionModeEnumVal = textureJson[jsonKeys.compressionModeEnumVal];
-  info.compressionMode = CompressionMode(compressionModeEnumVal);
+  texInfo->compressionMode = CompressionMode(compressionModeEnumVal);
 
-  info.textureSize = textureJson[jsonKeys.textureSize];
-  info.originalFile = textureJson[jsonKeys.originalFile];
-  info.width = textureJson[jsonKeys.width];
-  info.height = textureJson[jsonKeys.height];
+  texInfo->textureSize = textureJson[jsonKeys.textureSize];
+  texInfo->originalFile = textureJson[jsonKeys.originalFile];
+  texInfo->width = textureJson[jsonKeys.width];
+  texInfo->height = textureJson[jsonKeys.height];
 
   // TODO: mipmaps
 //  for (auto& [key, value] : textureJson["pages"].items())
@@ -55,24 +54,22 @@ assets::TextureInfo assets::readTextureInfo(AssetFile* file) {
 //    page.width = value["width"];
 //    page.height = value["height"];
 //
-//    info.pages.push_back(page);
+//    texInfo->pages.push_back(page);
 //  }
-
-  return info;
 }
 
-void assets::unpackTexture(TextureInfo* info, const char* sourceBuffer, size_t sourceSize, char* destination) {
+void assets::unpackTexture(const TextureInfo& texInfo, const char* sourceBuffer, size_t sourceSize, char* destination) {
   const char* sourceIter = sourceBuffer;
   char* destIter = destination;
 
-  switch(info->compressionMode) {
+  switch(texInfo.compressionMode) {
     case CompressionMode::None:
       memcpy(destIter, sourceIter, sourceSize);
       break;
     case CompressionMode::LZ4:
-      LZ4_decompress_safe(sourceBuffer, destination, (s32)sourceSize, (s32)info->textureSize);
+      LZ4_decompress_fast(sourceBuffer, destination, (s32)texInfo.textureSize);
       // TODO: mipmaps
-//      for (const TexturePageInfo& page : info->pages)
+//      for (const TexturePageInfo& page : texInfo->pages)
 //      {
 //        LZ4_decompress_safe(sourceIter, destIter, page.compressedSize, page.originalSize);
 //        sourceIter += page.compressedSize;

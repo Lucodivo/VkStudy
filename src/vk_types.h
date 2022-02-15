@@ -19,6 +19,7 @@ struct AllocatedBuffer {
 struct AllocatedImage {
   VkImage vkImage;
   VmaAllocation vmaAllocation;
+  VkFormat vkFormat;
 };
 
 struct Texture {

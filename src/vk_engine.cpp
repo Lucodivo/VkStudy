@@ -415,6 +415,10 @@ void VulkanEngine::initImgui() {
   imguiState = {};
   imguiState.showMainMenu = true;
   imguiState.showFPS = true;
+
+  mainDeletionQueue.pushFunction([=]() {
+    vkDestroyDescriptorPool(device, imguiDescriptorPool, nullptr);
+    ImGui_ImplVulkan_Shutdown();
   });
 }
 
@@ -900,13 +904,13 @@ void VulkanEngine::initScene() {
 //  mrSaturnObject.mesh = getMesh(bakedMeshAssetData.mr_saturn.name);
 //  mrSaturnObject.materialName = materialDefaultLit.name;
 //  mrSaturnObject.material = getMaterial(mrSaturnObject.materialName);
-//	f32 focusScale = 20.0f;
-//	mat4 focusScaleMat = scale_mat4(vec3{focusScale, focusScale, focusScale});
-//	mat4 focusTranslationMat = translate_mat4(vec3{0.0f, 0.0f, -focusScale * 2.0f});
-//	mat4 focusTransform = focusTranslationMat * focusScaleMat;
-//  mrSaturnObject.modelMatrix = focusTransform;
+//	f32 mrSaturnScale = 20.0f;
+//	mat4 mrSaturnScaleMat = scale_mat4(vec3{mrSaturnScale, mrSaturnScale, mrSaturnScale});
+//	mat4 mrSaturnTranslationMat = translate_mat4(vec3{0.0f, 0.0f, -mrSaturnScale * 2.0f});
+//	mat4 mrSaturnTransform = mrSaturnTranslationMat * mrSaturnScaleMat;
+//  mrSaturnObject.modelMatrix = mrSaturnTransform;
 //  mrSaturnObject.defaultColor = vec4{155.0f / 255.0f, 115.0f / 255.0f, 96.0f / 255.0f, 1.0f};
-//  attachTexture(blockySampler, "default", &mrSaturnObject.textureSet);
+//  attachTexture(blockySampler, bakedTextureAssetData.single_white_pixel.name, &mrSaturnObject.textureSet);
 //	renderables.push_back(mrSaturnObject);
 //
 //  // Cubes //
@@ -914,7 +918,7 @@ void VulkanEngine::initScene() {
 //  cubeObject.mesh = getMesh(bakedMeshAssetData.cube.name);
 //  cubeObject.materialName = materialDefaulColor.name;
 //  cubeObject.material = getMaterial(cubeObject.materialName);
-//  attachTexture(blockySampler, "default", &cubeObject.textureSet);
+//  attachTexture(blockySampler, bakedTextureAssetData.single_white_pixel.name, &cubeObject.textureSet);
 //	f32 envScale = 0.2f;
 //	mat4 envScaleMat = scale_mat4(vec3{envScale, envScale, envScale});
 //	for (s32 x = -16; x <= 16; ++x)
@@ -934,14 +938,14 @@ void VulkanEngine::initScene() {
   minecraftObject.materialName = materialTextured.name;
   minecraftObject.material = getMaterial(minecraftObject.materialName);
   minecraftObject.defaultColor = vec4{50.0f, 0.0f, 0.0f, 1.0f};
-  attachTexture(blockySampler, "minecraft_diffuse", &minecraftObject.textureSet);
+  attachTexture(blockySampler, bakedTextureAssetData.lost_empire_RGBA.name, &minecraftObject.textureSet);
 
-  f32 focusScale = 1.0f;
-  mat4 focusScaleMat = scale_mat4(vec3{focusScale, focusScale, focusScale});
-  mat4 focusRotationMat = rotate_mat4(RadiansPerDegree * 90.0f, vec3{1.0f, 0.0f, 0.0f});
-  mat4 focusTranslationMat = translate_mat4(vec3{0.0f, 0.0f, 0.0f});
-  mat4 focusTransform = focusTranslationMat * focusRotationMat * focusScaleMat;
-  minecraftObject.modelMatrix = focusTransform;
+  f32 minecraftScale = 1.0f;
+  mat4 minecraftScaleMat = scale_mat4(vec3{minecraftScale, minecraftScale, minecraftScale});
+  mat4 minecraftRotationMat = rotate_mat4(RadiansPerDegree * 90.0f, vec3{1.0f, 0.0f, 0.0f});
+  mat4 minecraftTranslationMat = translate_mat4(vec3{0.0f, 0.0f, 0.0f});
+  mat4 minecraftTransform = minecraftTranslationMat * minecraftRotationMat * minecraftScaleMat;
+  minecraftObject.modelMatrix = minecraftTransform;
 
   renderables.push_back(minecraftObject);
 
@@ -962,7 +966,7 @@ void VulkanEngine::initCamera() {
 }
 
 void VulkanEngine::loadMeshes() {
-
+  // Note: Currently just loading all meshes, not sustainable in long run
   BakedAssetData* bakedMeshes = (BakedAssetData*)(&bakedMeshAssetData);
   u32 meshCount = bakedMeshAssetCount();
   for(u32 i = 0; i < meshCount; i++) {
@@ -980,8 +984,8 @@ void VulkanEngine::loadMeshes() {
       const BakedAssetData& bakedMeshData = bakedMeshes[i];
       const Mesh& mesh = meshes[bakedMeshData.name];
       vmaDestroyBuffer(vmaAllocator, mesh.vertexBuffer.vkBuffer, mesh.vertexBuffer.vmaAllocation);
+      meshes.erase(bakedMeshData.name);
     }
-    meshes.clear();
   });
 }
 
@@ -1302,23 +1306,38 @@ void VulkanEngine::renderImgui(VkCommandBuffer cmd) {
 }
 
 void VulkanEngine::loadImages() {
-  Texture minecraftTex;
+  // Note: Currently just loading all textures, not sustainable in long run
+  BakedAssetData* bakedTextures = (BakedAssetData*)(&bakedTextureAssetData);
+  u32 textureCount = bakedTextureAssetCount();
+  std::vector<AllocatedImage> allocatedImageTextures;
+  allocatedImageTextures.resize(textureCount);
+  std::vector<const char*> filePaths;
+  filePaths.resize(textureCount);
 
-  // TODO: replace with getting info from assets
-  vkutil::loadImageFromFile(vmaAllocator, uploadContext, "assets/lost_empire-RGBA.png", minecraftTex.image);
+  for(u32 i = 0; i < textureCount; i++) {
+    filePaths[i] = bakedTextures[i].filePath;
+  }
 
-  VkImageViewCreateInfo imageCreateInfo = vkinit::imageViewCreateInfo(VK_FORMAT_R8G8B8A8_SRGB, minecraftTex.image.vkImage, VK_IMAGE_ASPECT_COLOR_BIT);
-  vkCreateImageView(device, &imageCreateInfo, nullptr, &minecraftTex.imageView);
+  vkutil::loadImagesFromAssetFiles(vmaAllocator, uploadContext, filePaths.data(), allocatedImageTextures.data(), textureCount);
 
-  loadedTextures["minecraft_diffuse"] = minecraftTex;
+  for(u32 i = 0; i < textureCount; i++) {
+    const BakedAssetData& bakedTextureData = bakedTextures[i];
 
-//  Texture defaultTex{};
-//
-//  // TODO: replace with getting info from assets
-//  vkutil::loadImageFromFile(vmaAllocator, uploadContext, "assets/single_white_pixel.png", defaultTex.image);
-//
-//  imageCreateInfo = vkinit::imageViewCreateInfo(VK_FORMAT_R8G8B8A8_SRGB, defaultTex.image.vkImage, VK_IMAGE_ASPECT_COLOR_BIT);
-//  vkCreateImageView(device, &imageCreateInfo, nullptr, &defaultTex.imageView);
-//
-//  loadedTextures["default"] = defaultTex;
+    Texture tex{};
+    tex.image = allocatedImageTextures[i];
+    VkImageViewCreateInfo imageCreateInfo = vkinit::imageViewCreateInfo(tex.image.vkFormat, tex.image.vkImage, VK_IMAGE_ASPECT_COLOR_BIT);
+    vkCreateImageView(device, &imageCreateInfo, nullptr, &tex.imageView);
+
+    loadedTextures[bakedTextureData.name] = tex;
+  }
+
+  mainDeletionQueue.pushFunction([=]() {
+    for(u32 i = 0; i < textureCount; i++) {
+      const BakedAssetData& bakedTextureData = bakedTextures[i];
+      Texture texture = loadedTextures[bakedTextureData.name];
+      vkDestroyImageView(device, texture.imageView, nullptr);
+      vmaDestroyImage(vmaAllocator, texture.image.vkImage, texture.image.vmaAllocation);
+      loadedTextures.erase(bakedTextureData.name);
+    }
+  });
 }

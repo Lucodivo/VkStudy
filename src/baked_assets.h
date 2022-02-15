@@ -32,3 +32,15 @@ struct BakedPrefabs {
 u32 bakedMeshAssetCount() {
   return (sizeof(BakedMeshes) / sizeof(BakedAssetData));
 }
+
+u32 bakedTextureAssetCount() {
+  return (sizeof(BakedTextures) / sizeof(BakedAssetData));
+}
+
+u32 bakedMaterialAssetCount() {
+  return (sizeof(BakedMaterials) / sizeof(BakedAssetData));
+}
+
+u32 bakedPrefabAssetCount() {
+  return (sizeof(BakedPrefabs) / sizeof(BakedAssetData));
+}

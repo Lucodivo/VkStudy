@@ -33,9 +33,9 @@ namespace assets {
   };
 
   //parses the texture metadata from an asset file
-  TextureInfo readTextureInfo(AssetFile* file);
+  void readTextureInfo(const AssetFile& file, TextureInfo* texInfo);
 
-  void unpackTexture(TextureInfo* info, const char* sourceBuffer, size_t sourceSize, char* destination);
+  void unpackTexture(const TextureInfo& texInfo, const char* sourceBuffer, size_t sourceSize, char* destination);
   // void unpackTexturePage(TextureInfo* info, int pageIndex ,char* sourcebuffer, char* destination); // TODO: Mipmaps
   AssetFile packTexture(TextureInfo* info, void* pixelData);
 }
