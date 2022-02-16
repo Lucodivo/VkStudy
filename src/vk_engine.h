@@ -146,6 +146,7 @@ public:
     bool showGeneralDebug;
     bool showMainMenu;
     bool showFPS;
+    CStringRingBuffer stringRingBuffer;
   } imguiState;
 
 private:

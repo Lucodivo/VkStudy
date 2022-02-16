@@ -415,10 +415,12 @@ void VulkanEngine::initImgui() {
   imguiState = {};
   imguiState.showMainMenu = true;
   imguiState.showFPS = true;
+  imguiState.stringRingBuffer = createCStringRingBuffer(50, 256);
 
   mainDeletionQueue.pushFunction([=]() {
     vkDestroyDescriptorPool(device, imguiDescriptorPool, nullptr);
     ImGui_ImplVulkan_Shutdown();
+    deleteCStringRingBuffer(imguiState.stringRingBuffer);
   });
 }
 
@@ -1284,6 +1286,8 @@ void VulkanEngine::startImguiFrame() {
       }ImGui::EndMainMenuBar();
     }
   }
+
+  imguiTextWindow("General Debug", imguiState.stringRingBuffer, imguiState.showGeneralDebug);
 
   local_access Timer frameTimer;
   f64 frameTimeMs = StopTimer(frameTimer); // for last frame

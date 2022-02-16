@@ -64,5 +64,6 @@
 #include "vk_textures.cpp"
 #include "vk_mesh.cpp"
 #include "vk_pipeline_builder.cpp"
-#include "vk_engine.cpp"
+#include "imgui_util.cpp"
 #include "material.cpp"
+#include "vk_engine.cpp"
