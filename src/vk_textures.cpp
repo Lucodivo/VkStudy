@@ -240,23 +240,20 @@ void vkutil::loadImagesFromAssetFiles(VmaAllocator& vmaAllocator, const UploadCo
     stagingBufferSize += textureInfos[i].textureSize;
   }
 
-  //allocate temporary buffer for holding texture data to upload
-  AllocatedBuffer stagingBuffer = vkutil::createBuffer(vmaAllocator, stagingBufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_CPU_ONLY);
+  AllocatedBuffer stagingVMABuffer = vkutil::createBuffer(vmaAllocator, stagingBufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_CPU_ONLY);
 
   void* data;
-  vmaMapMemory(vmaAllocator, stagingBuffer.vmaAllocation, &data);
+  vmaMapMemory(vmaAllocator, stagingVMABuffer.vmaAllocation, &data);
     u32 stagingBufferPtrIter = 0;
     for(u32 i = 0; i < imageCount; i++) {
       const assets::TextureInfo& texInfo = textureInfos[i];
       const assets::AssetFile& assetFile = assetFiles[i];
-      // Note: Unpacking the texture takes, by far, the most time in this entire function.
-      // TODO: Consider ways in which to speed up our decompression process
       assets::unpackTexture(texInfo, assetFile.binaryBlob.data(), assetFile.binaryBlob.size(), ((char*)data) + stagingBufferPtrIter);
       stagingBufferPtrIter += texInfo.textureSize;
     }
-  vmaUnmapMemory(vmaAllocator, stagingBuffer.vmaAllocation);
+  vmaUnmapMemory(vmaAllocator, stagingVMABuffer.vmaAllocation);
 
-  vkutil::immediateSubmit(uploadContext, [imageCount, &stagingBuffer, &outImages, &imageExtents, &textureInfos](VkCommandBuffer cmd) {
+  vkutil::immediateSubmit(uploadContext, [imageCount, &stagingVMABuffer, &outImages, &imageExtents, &textureInfos](VkCommandBuffer cmd) {
     // which aspects of the image will be accessed?
     VkImageSubresourceRange range;
     range.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT; // color data
@@ -313,7 +310,7 @@ void vkutil::loadImagesFromAssetFiles(VmaAllocator& vmaAllocator, const UploadCo
       copyRegion.imageExtent = imageExtent;
 
       //copy the buffer into the image
-      vkCmdCopyBufferToImage(cmd, stagingBuffer.vkBuffer, allocImage.vkImage, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copyRegion);
+      vkCmdCopyBufferToImage(cmd, stagingVMABuffer.vkBuffer, allocImage.vkImage, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copyRegion);
 
       // barrier the image into the shader readable layout
       imageBarrier_toReadable.image = allocImage.vkImage;
@@ -333,9 +330,5 @@ void vkutil::loadImagesFromAssetFiles(VmaAllocator& vmaAllocator, const UploadCo
 
   });
 
-  vmaDestroyBuffer(vmaAllocator, stagingBuffer.vkBuffer, stagingBuffer.vmaAllocation);
-
-  for(u32 i = 0; i < imageCount; i++) {
-    printf("Texture loaded successfully: %s\n", files[i]);
-  }
+  vmaDestroyBuffer(vmaAllocator, stagingVMABuffer.vkBuffer, stagingVMABuffer.vmaAllocation);
 }

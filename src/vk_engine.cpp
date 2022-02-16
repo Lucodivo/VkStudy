@@ -1291,7 +1291,7 @@ void VulkanEngine::startImguiFrame() {
   if(imguiState.showFPS) {
     const ImGuiWindowFlags textNoFrills = ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoResize;
     if(ImGui::Begin("FPS", &imguiState.showFPS, textNoFrills)) {
-      ImGui::Text("%5.2f ms | %3.1f showFPS", frameTimeMs, frameFPS);
+      ImGui::Text("%5.2f ms | %3.1f fps", frameTimeMs, frameFPS);
     }ImGui::End();
   }
   StartTimer(frameTimer); // for current frame

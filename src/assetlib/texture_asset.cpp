@@ -59,16 +59,15 @@ void assets::readTextureInfo(const AssetFile& file, TextureInfo* texInfo) {
 }
 
 void assets::unpackTexture(const TextureInfo& texInfo, const char* sourceBuffer, size_t sourceSize, char* destination) {
-  const char* sourceIter = sourceBuffer;
-  char* destIter = destination;
-
   switch(texInfo.compressionMode) {
     case CompressionMode::None:
-      memcpy(destIter, sourceIter, sourceSize);
+      memcpy(destination, sourceBuffer, sourceSize);
       break;
     case CompressionMode::LZ4:
-      LZ4_decompress_fast(sourceBuffer, destination, (s32)texInfo.textureSize);
+      LZ4_decompress_safe(sourceBuffer, destination, (s32)sourceSize, (s32)texInfo.textureSize);
       // TODO: mipmaps
+//      char* sourceIter = sourceBuffer;
+//      char* destIter = destination;
 //      for (const TexturePageInfo& page : texInfo->pages)
 //      {
 //        LZ4_decompress_safe(sourceIter, destIter, page.compressedSize, page.originalSize);

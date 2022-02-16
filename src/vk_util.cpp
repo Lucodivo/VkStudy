@@ -9,10 +9,14 @@ AllocatedBuffer vkutil::createBuffer(VmaAllocator& vmaAllocator, u64 allocSize, 
 
   bufferInfo.size = allocSize;
   bufferInfo.usage = usage;
-
-
+  
   VmaAllocationCreateInfo vmaallocInfo = {};
   vmaallocInfo.usage = memUsage;
+
+  // If this buffer is only being used to transfer data from CPU to GPU, we would prefer it to be CPU cached
+  if((usage & VK_BUFFER_USAGE_TRANSFER_SRC_BIT) && (VMA_MEMORY_USAGE_CPU_ONLY & memUsage)) {
+    vmaallocInfo.preferredFlags = VK_MEMORY_PROPERTY_HOST_CACHED_BIT;
+  }
 
   AllocatedBuffer newBuffer;
 
