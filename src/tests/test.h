@@ -2,7 +2,6 @@
 
 #include "../vk_study.h"
 
-#undef Max
 #undef Min
-
+#undef Max
 #include <gtest/gtest.h>

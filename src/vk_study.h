@@ -7,6 +7,7 @@
 
 #include <stdint.h>
 
+#define NOMINMAX
 #include <windows.h>
 
 #include <vulkan/vulkan.h>
@@ -14,14 +15,9 @@
 #include <SDL.h>
 #include <SDL_vulkan.h>
 
-#include <stb_image.h> // TODO: remove?
-
-#include <spirv_reflect.h> // TODO: remove?
-
-#include <glm/gtx/transform.hpp>
-#include <glm/glm.hpp>
-#include <glm/vec3.hpp>
-#include <glm/vec2.hpp>
+// TODO: remove? Still used in material.h
+// TODO: Maybe asset baker can use SPIRV CROSS to pull out what is needed?
+#include <spirv_reflect.h>
 
 #include <imgui.h>
 #include <imgui_impl_sdl.h>

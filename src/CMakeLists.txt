@@ -2,7 +2,7 @@
 add_executable(vk_study
     vk_study.cpp)
 
-set(LIBS vkbootstrap vma glm tinyobjloader imgui stb_image tinygltf spirv_reflect assetlib)
+set(LIBS vkbootstrap vma imgui spirv_reflect assetlib)
 
 set_property(TARGET vk_study PROPERTY VS_DEBUGGER_WORKING_DIRECTORY "$<TARGET_FILE_DIR:vk_study>")
 
