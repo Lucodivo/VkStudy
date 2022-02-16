@@ -218,7 +218,7 @@ void vkutil::loadImagesFromAssetFiles(VmaAllocator& vmaAllocator, const UploadCo
   VmaAllocationCreateInfo imgAllocCreateInfo = {};
   imgAllocCreateInfo.usage = VMA_MEMORY_USAGE_GPU_ONLY;
 
-  u32 stagingBufferSize = 0;
+  u64 stagingBufferSize = 0;
   for(u32 i = 0; i < imageCount; i++) {
     assets::AssetFile& assetFile = assetFiles[i];
     assets::TextureInfo& textureInfo = textureInfos[i];
@@ -244,7 +244,7 @@ void vkutil::loadImagesFromAssetFiles(VmaAllocator& vmaAllocator, const UploadCo
 
   void* data;
   vmaMapMemory(vmaAllocator, stagingVMABuffer.vmaAllocation, &data);
-    u32 stagingBufferPtrIter = 0;
+    u64 stagingBufferPtrIter = 0;
     for(u32 i = 0; i < imageCount; i++) {
       const assets::TextureInfo& texInfo = textureInfos[i];
       const assets::AssetFile& assetFile = assetFiles[i];
@@ -289,7 +289,7 @@ void vkutil::loadImagesFromAssetFiles(VmaAllocator& vmaAllocator, const UploadCo
     imageBarrier_toReadable.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
     imageBarrier_toReadable.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 
-    u32 stagingBufferOffset = 0;
+    u64 stagingBufferOffset = 0;
     for(u32 i = 0; i < imageCount; i++) {
       AllocatedImage& allocImage = outImages[i];
       VkExtent3D& imageExtent = imageExtents[i];

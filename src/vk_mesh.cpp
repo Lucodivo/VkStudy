@@ -71,10 +71,10 @@ bool Mesh::loadFromAsset(const char* fileName) {
 
   if(meshInfo.vertexFormat == assets::VertexFormat::PNCV_F32) {
     assets::Vertex_PNCV_f32* unpackedVertices = (assets::Vertex_PNCV_f32*)tmpVertexBuffer.data();
-    u32 vertexCount = meshInfo.vertexBufferSize / sizeof(assets::Vertex_PNCV_f32);
+    u64 vertexCount = meshInfo.vertexBufferSize / sizeof(assets::Vertex_PNCV_f32);
     vertices.resize(vertexCount);
 
-    for (int i = 0; i < vertexCount; i++) {
+    for (u32 i = 0; i < vertexCount; i++) {
       const assets::Vertex_PNCV_f32& assetVertex = unpackedVertices[i];
       Vertex& newVertex = vertices[i];
 

@@ -1,6 +1,4 @@
-#include "../vk_study.h"
-
-#include <gtest/gtest.h>
+#include "test.h"
 
 namespace {
   class VulkanTest : public testing::Test {

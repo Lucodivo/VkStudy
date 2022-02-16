@@ -16,7 +16,15 @@ add_executable(
         shader_reflect_test.cpp
 )
 target_link_libraries(shader_reflect_test ${LIBS})
+add_dependencies(shader_reflect_test Shaders)
+
+add_executable(
+        playground_test
+        playground_test.cpp
+)
+target_link_libraries(playground_test ${LIBS})
 
 include(GoogleTest)
-gtest_discover_tests(shader_reflect_test)
-add_dependencies(shader_reflect_test Shaders)
+gtest_discover_tests(
+        shader_reflect_test
+        playground_test)
