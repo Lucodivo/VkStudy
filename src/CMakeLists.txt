@@ -1,14 +1,8 @@
-# Add source to this project's executable.
-add_executable(vk_study
-    vk_study.cpp)
-
-set(LIBS vkbootstrap vma imgui spirv_reflect assetlib)
-
-set_property(TARGET vk_study PROPERTY VS_DEBUGGER_WORKING_DIRECTORY "$<TARGET_FILE_DIR:vk_study>")
-
+# vk_study
+add_executable(vk_study vk_study.cpp)
 target_include_directories(vk_study PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
+set(LIBS vkbootstrap vma imgui spirv_reflect assetlib Vulkan::Vulkan sdl2)
 target_link_libraries(vk_study ${LIBS})
-
-target_link_libraries(vk_study Vulkan::Vulkan sdl2)
+set_property(TARGET vk_study PROPERTY VS_DEBUGGER_WORKING_DIRECTORY "$<TARGET_FILE_DIR:vk_study>")
 
 add_dependencies(vk_study Shaders)

@@ -55,6 +55,7 @@
 
 #include "camera.cpp"
 #include "util.cpp"
+#include "windows_util.cpp"
 #include "vk_util.cpp"
 #include "vk_initializers.cpp"
 #include "vk_textures.cpp"

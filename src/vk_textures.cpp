@@ -16,7 +16,7 @@ void vkutil::loadImageFromAssetFile(VmaAllocator& vmaAllocator, const UploadCont
   readTextureInfo(assetFile, &textureInfo);
 
   //allocate temporary buffer for holding texture data to upload
-  AllocatedBuffer stagingBuffer = vkutil::createBuffer(vmaAllocator, textureInfo.textureSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_CPU_ONLY);
+  AllocatedBuffer stagingBuffer = vkutil::createBuffer(vmaAllocator, textureInfo.textureSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_CPU_ONLY, VK_MEMORY_PROPERTY_HOST_CACHED_BIT);
 
   void* data;
   vmaMapMemory(vmaAllocator, stagingBuffer.vmaAllocation, &data);
@@ -134,10 +134,11 @@ void vkutil::loadImagesFromAssetFiles(VmaAllocator& vmaAllocator, const UploadCo
     stagingBufferSize += textureInfos[i].textureSize;
   }
 
-  AllocatedBuffer stagingVMABuffer = vkutil::createBuffer(vmaAllocator, stagingBufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_CPU_ONLY);
+  AllocatedBuffer stagingVMABuffer = vkutil::createBuffer(vmaAllocator, stagingBufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_CPU_ONLY, VK_MEMORY_PROPERTY_HOST_CACHED_BIT);
 
   void* data;
   vmaMapMemory(vmaAllocator, stagingVMABuffer.vmaAllocation, &data);
+  {
     u64 stagingBufferPtrIter = 0;
     for(u32 i = 0; i < imageCount; i++) {
       const assets::TextureInfo& texInfo = textureInfos[i];
@@ -145,6 +146,7 @@ void vkutil::loadImagesFromAssetFiles(VmaAllocator& vmaAllocator, const UploadCo
       assets::unpackTexture(texInfo, assetFile.binaryBlob.data(), assetFile.binaryBlob.size(), ((char*)data) + stagingBufferPtrIter);
       stagingBufferPtrIter += texInfo.textureSize;
     }
+  }
   vmaUnmapMemory(vmaAllocator, stagingVMABuffer.vmaAllocation);
 
   vkutil::immediateSubmit(uploadContext, [imageCount, &stagingVMABuffer, &outImages, &imageExtents, &textureInfos](VkCommandBuffer cmd) {

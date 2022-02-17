@@ -714,7 +714,7 @@ void VulkanEngine::initDescriptors() {
   u64 globalBufferSize = FRAME_OVERLAP * (paddedGPUCameraDataSize + paddedGPUSceneDataSize);
   globalBuffer.cameraOffset = 0;
   globalBuffer.sceneOffset = FRAME_OVERLAP * paddedGPUCameraDataSize;
-  globalBuffer.buffer = vkutil::createBuffer(vmaAllocator, globalBufferSize, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
+  globalBuffer.buffer = vkutil::createBuffer(vmaAllocator, globalBufferSize, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU, 0);
   vkAllocateDescriptorSets(device, &globalDescSetAllocInfo, &globalDescriptorSet);
 
   // info about the buffer the descriptor will point at
@@ -740,7 +740,7 @@ void VulkanEngine::initDescriptors() {
   for(u32 i = 0; i < FRAME_OVERLAP; i++) {
     FrameData& frame = frames[i];
 
-    frame.objectBuffer = vkutil::createBuffer(vmaAllocator, objectBufferSize, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
+    frame.objectBuffer = vkutil::createBuffer(vmaAllocator, objectBufferSize, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU, 0);
     vkAllocateDescriptorSets(device, &objectDescSetAllocInfo, &frame.objectDescriptorSet);
 
     VkDescriptorBufferInfo objectDescBufferInfo;
@@ -902,54 +902,54 @@ void VulkanEngine::initScene() {
 
   // Renderables //
   // Mr. Saturn
-//	RenderObject mrSaturnObject;
-//  mrSaturnObject.mesh = getMesh(bakedMeshAssetData.mr_saturn.name);
-//  mrSaturnObject.materialName = materialDefaultLit.name;
-//  mrSaturnObject.material = getMaterial(mrSaturnObject.materialName);
-//	f32 mrSaturnScale = 20.0f;
-//	mat4 mrSaturnScaleMat = scale_mat4(vec3{mrSaturnScale, mrSaturnScale, mrSaturnScale});
-//	mat4 mrSaturnTranslationMat = translate_mat4(vec3{0.0f, 0.0f, -mrSaturnScale * 2.0f});
-//	mat4 mrSaturnTransform = mrSaturnTranslationMat * mrSaturnScaleMat;
-//  mrSaturnObject.modelMatrix = mrSaturnTransform;
-//  mrSaturnObject.defaultColor = vec4{155.0f / 255.0f, 115.0f / 255.0f, 96.0f / 255.0f, 1.0f};
-//  attachTexture(blockySampler, bakedTextureAssetData.single_white_pixel.name, &mrSaturnObject.textureSet);
-//	renderables.push_back(mrSaturnObject);
-//
-//  // Cubes //
-//	RenderObject cubeObject;
-//  cubeObject.mesh = getMesh(bakedMeshAssetData.cube.name);
-//  cubeObject.materialName = materialDefaulColor.name;
-//  cubeObject.material = getMaterial(cubeObject.materialName);
-//  attachTexture(blockySampler, bakedTextureAssetData.single_white_pixel.name, &cubeObject.textureSet);
-//	f32 envScale = 0.2f;
-//	mat4 envScaleMat = scale_mat4(vec3{envScale, envScale, envScale});
-//	for (s32 x = -16; x <= 16; ++x)
-//	for (s32 y = -16; y <= 16; ++y)
-//	for (s32 z = 0; z <= 32; ++z) {
-//		vec3 pos{ (f32)x, (f32)y, (f32)z };
-//		vec3 color = (pos + vec3{16.0f, 16.0f, 0.0f}) / vec3{32.0f, 32.0f, 32.0f};
-//		mat4 translationMat = translate_mat4(pos);
-//    cubeObject.modelMatrix = translationMat * envScaleMat;
-//    cubeObject.defaultColor = vec4{color.r, color.g, color.b, 1.0f}; // TODO: lookup how glm accomplishes vec4{vec3, f32} construction
-//		renderables.push_back(cubeObject);
-//	}
+	RenderObject mrSaturnObject;
+  mrSaturnObject.mesh = getMesh(bakedMeshAssetData.mr_saturn.name);
+  mrSaturnObject.materialName = materialDefaultLit.name;
+  mrSaturnObject.material = getMaterial(mrSaturnObject.materialName);
+	f32 mrSaturnScale = 20.0f;
+	mat4 mrSaturnScaleMat = scale_mat4(vec3{mrSaturnScale, mrSaturnScale, mrSaturnScale});
+	mat4 mrSaturnTranslationMat = translate_mat4(vec3{0.0f, 0.0f, -mrSaturnScale * 2.0f});
+	mat4 mrSaturnTransform = mrSaturnTranslationMat * mrSaturnScaleMat;
+  mrSaturnObject.modelMatrix = mrSaturnTransform;
+  mrSaturnObject.defaultColor = vec4{155.0f / 255.0f, 115.0f / 255.0f, 96.0f / 255.0f, 1.0f};
+  attachTexture(blockySampler, bakedTextureAssetData.single_white_pixel.name, &mrSaturnObject.textureSet);
+	renderables.push_back(mrSaturnObject);
+
+  // Cubes //
+	RenderObject cubeObject;
+  cubeObject.mesh = getMesh(bakedMeshAssetData.cube.name);
+  cubeObject.materialName = materialDefaulColor.name;
+  cubeObject.material = getMaterial(cubeObject.materialName);
+  attachTexture(blockySampler, bakedTextureAssetData.single_white_pixel.name, &cubeObject.textureSet);
+	f32 envScale = 0.2f;
+	mat4 envScaleMat = scale_mat4(vec3{envScale, envScale, envScale});
+	for (s32 x = -16; x <= 16; ++x)
+	for (s32 y = -16; y <= 16; ++y)
+	for (s32 z = 0; z <= 32; ++z) {
+		vec3 pos{ (f32)x, (f32)y, (f32)z };
+		vec3 color = (pos + vec3{16.0f, 16.0f, 0.0f}) / vec3{32.0f, 32.0f, 32.0f};
+		mat4 translationMat = translate_mat4(pos);
+    cubeObject.modelMatrix = translationMat * envScaleMat;
+    cubeObject.defaultColor = vec4{color.r, color.g, color.b, 1.0f}; // TODO: lookup how glm accomplishes vec4{vec3, f32} construction
+		renderables.push_back(cubeObject);
+	}
 
   // Minecraft World
-  RenderObject minecraftObject;
-  minecraftObject.mesh = getMesh(bakedMeshAssetData.lost_empire.name);
-  minecraftObject.materialName = materialTextured.name;
-  minecraftObject.material = getMaterial(minecraftObject.materialName);
-  minecraftObject.defaultColor = vec4{50.0f, 0.0f, 0.0f, 1.0f};
-  attachTexture(blockySampler, bakedTextureAssetData.lost_empire_RGBA.name, &minecraftObject.textureSet);
-
-  f32 minecraftScale = 1.0f;
-  mat4 minecraftScaleMat = scale_mat4(vec3{minecraftScale, minecraftScale, minecraftScale});
-  mat4 minecraftRotationMat = rotate_mat4(RadiansPerDegree * 90.0f, vec3{1.0f, 0.0f, 0.0f});
-  mat4 minecraftTranslationMat = translate_mat4(vec3{0.0f, 0.0f, 0.0f});
-  mat4 minecraftTransform = minecraftTranslationMat * minecraftRotationMat * minecraftScaleMat;
-  minecraftObject.modelMatrix = minecraftTransform;
-
-  renderables.push_back(minecraftObject);
+//  RenderObject minecraftObject;
+//  minecraftObject.mesh = getMesh(bakedMeshAssetData.lost_empire.name);
+//  minecraftObject.materialName = materialTextured.name;
+//  minecraftObject.material = getMaterial(minecraftObject.materialName);
+//  minecraftObject.defaultColor = vec4{50.0f, 0.0f, 0.0f, 1.0f};
+//  attachTexture(blockySampler, bakedTextureAssetData.lost_empire_RGBA.name, &minecraftObject.textureSet);
+//
+//  f32 minecraftScale = 1.0f;
+//  mat4 minecraftScaleMat = scale_mat4(vec3{minecraftScale, minecraftScale, minecraftScale});
+//  mat4 minecraftRotationMat = rotate_mat4(RadiansPerDegree * 90.0f, vec3{1.0f, 0.0f, 0.0f});
+//  mat4 minecraftTranslationMat = translate_mat4(vec3{0.0f, 0.0f, 0.0f});
+//  mat4 minecraftTransform = minecraftTranslationMat * minecraftRotationMat * minecraftScaleMat;
+//  minecraftObject.modelMatrix = minecraftTransform;
+//
+//  renderables.push_back(minecraftObject);
 
   // TODO: sort objects by material to minimize binding pipelines
   //std::sort(renderables.begin(), renderables.end(), [](const RenderObject& a, const RenderObject& b) {
@@ -1159,21 +1159,25 @@ void VulkanEngine::drawObjects(VkCommandBuffer cmd, RenderObject* firstObject, u
   float magicNum = (frameNumber / 120.f);
   sceneData.ambientColor = {sin(magicNum), 0, cos(magicNum), 1};
 
+  int frameIndex = frameNumber % FRAME_OVERLAP;
+
   // copy data to scene buffer
+  u64 sceneDataOffset = (u32)vkutil::padUniformBufferSize(gpuProperties, sizeof(GPUSceneData)) * frameIndex;
+  u64 cameraDataOffset = (u32)vkutil::padUniformBufferSize(gpuProperties, sizeof(GPUCameraData)) * frameIndex;
   char* globalDataBufferPtr;
   vmaMapMemory(vmaAllocator, globalBuffer.buffer.vmaAllocation, (void**)&globalDataBufferPtr);
-  int frameIndex = frameNumber % FRAME_OVERLAP;
-  // copy camera data
-  char* cameraPtr = (globalDataBufferPtr + globalBuffer.cameraOffset);
-  u64 cameraDataOffset = (u32)vkutil::padUniformBufferSize(gpuProperties, sizeof(GPUCameraData)) * frameIndex;
-  cameraPtr += cameraDataOffset;
-  memcpy(cameraPtr, &cameraData, sizeof(GPUCameraData));
-  // copy scene data
-  char* scenePtr = (globalDataBufferPtr + globalBuffer.sceneOffset);
-  u64 sceneDataOffset = (u32)vkutil::padUniformBufferSize(gpuProperties, sizeof(GPUSceneData)) * frameIndex;
-  scenePtr += sceneDataOffset;
-  memcpy(scenePtr, &sceneData, sizeof(GPUSceneData));
-  globalDataBufferPtr = nullptr, cameraPtr = nullptr, scenePtr = nullptr;
+  {
+    // copy camera data
+    char* cameraPtr = (globalDataBufferPtr + globalBuffer.cameraOffset);
+    cameraPtr += cameraDataOffset;
+    memcpy(cameraPtr, &cameraData, sizeof(GPUCameraData));
+
+    // copy scene data
+    char* scenePtr = (globalDataBufferPtr + globalBuffer.sceneOffset);
+    scenePtr += sceneDataOffset;
+    memcpy(scenePtr, &sceneData, sizeof(GPUSceneData));
+    globalDataBufferPtr = nullptr;
+  }
   vmaUnmapMemory(vmaAllocator, globalBuffer.buffer.vmaAllocation);
 
   // copy data to object buffer

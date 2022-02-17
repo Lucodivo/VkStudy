@@ -2,7 +2,7 @@
 
 namespace vkutil {
 
-  AllocatedBuffer createBuffer(VmaAllocator& vmaAllocator, u64 allocSize, VkBufferUsageFlags usage, VmaMemoryUsage memUsage);
+  AllocatedBuffer createBuffer(VmaAllocator& vmaAllocator, u64 allocSize, VkBufferUsageFlags usage, VmaMemoryUsage memUsage, VkMemoryPropertyFlags preferredMemoryFlags);
   void immediateSubmit(const UploadContext& uploadContext, std::function<void(VkCommandBuffer cmd)>&& function);
   u64 padUniformBufferSize(const VkPhysicalDeviceProperties& gpuProperties, u64 originalSize);
   void loadShaderBuffer(const char* filePath, std::vector<char>& outBuffer);
