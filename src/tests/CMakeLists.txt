@@ -9,7 +9,7 @@ FetchContent_MakeAvailable(googletest)
 
 enable_testing() #Enables testing for this directory and below.
 
-set(LIBS vkbootstrap vma imgui spirv_reflect assetlib Vulkan::Vulkan sdl2 gtest_main)
+set(LIBS vkbootstrap vma imgui spirv_reflect assetlib noop_math Vulkan::Vulkan sdl2 gtest_main)
 
 # shader_reflect_test
 add_executable(
@@ -26,7 +26,16 @@ add_executable(
 )
 target_link_libraries(playground_test ${LIBS})
 
+# noop_math_test
+add_executable(
+        noop_math_test
+        noop_math_test.cpp
+)
+target_link_libraries(noop_math_test ${LIBS})
+
 include(GoogleTest)
 gtest_discover_tests(
         shader_reflect_test
-        playground_test)
+        playground_test
+        noop_math_test
+)

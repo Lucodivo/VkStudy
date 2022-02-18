@@ -4,6 +4,8 @@
 
 #include <unordered_map>
 
+#include "../noop_math/noop_math.h"
+
 // Prefabs are just "prefabricated"
 namespace assets {
 
@@ -19,7 +21,7 @@ namespace assets {
 		};
 		std::unordered_map<u64, NodeMesh> nodeMeshes;
 
-		std::vector<std::array<f32, 16>> matrices;
+		std::vector<mat4> matrices;
 	};
 
 	PrefabInfo readPrefabInfo(AssetFile* file);

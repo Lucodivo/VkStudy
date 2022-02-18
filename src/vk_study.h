@@ -5,8 +5,6 @@
 #include <functional>
 #include <unordered_map>
 
-#include <stdint.h>
-
 #define NOMINMAX
 #include <windows.h>
 
@@ -33,7 +31,7 @@
 
 #include "types.h"
 #include "vk_types.h"
-#include "noop_math.h"
+#include "noop_math/noop_math.h"
 #include "util.h"
 #include "cstring_ring_buffer.h"
 #include "camera.h"

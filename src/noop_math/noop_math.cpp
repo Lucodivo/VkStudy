@@ -1,275 +1,64 @@
-#pragma once
+#include "noop_math.h"
 
-// Note: If degrees/radians is not specified for angle, angle is assumed to be in radians
-
-// TODO: No optimizations have been made in this file. Ideas: intrinsics, sse, better usage of temporary memory.
-
-#undef min
-#undef max
-#define Min(x, y) (x < y ? x : y)
-#define Max(x, y) (x > y ? x : y)
-
-#define cos30 0.86602540f
-#define cos45 0.70710678f
-#define cos60 0.5f
-
-#define sin30 0.5f
-#define sin45 0.70710678f
-#define sin60 0.86602540f
-
-#define COMPARISON_EPSILON 0.001f
-
-struct vec2;
-struct vec3;
-struct vec4;
-struct mat3;
-struct mat4;
-struct quaternion;
-
-inline b32 epsilonComparison(f32 a, f32 b, f32 epsilon = COMPARISON_EPSILON);
-
-struct vec2 {
-  union {
-    struct {
-      f32 x, y;
-    };
-    struct {
-      f32 _, i;
-    };
-    struct {
-      f32 r, g;
-    };
-    f32 val[2];
-  };
-
-  b32 operator==(const vec2& v2) const {
-    return epsilonComparison(x, v2.x) &&
-            epsilonComparison(y, v2.y);
-  }
-};
-
-struct vec3 {
-  union {
-    struct {
-      f32 x, y, z;
-    };
-    struct {
-      vec2 xy;
-      f32 _;
-    };
-    struct {
-      f32 i, j, k;
-    };
-    struct {
-      f32 r, g, b;
-    };
-    struct {
-      vec2 rg;
-      f32 __;
-    };
-    f32 val[3];
-  };
-
-  b32 operator==(const vec3& v2) const {
-    return epsilonComparison(x, v2.x) &&
-           epsilonComparison(y, v2.y) &&
-           epsilonComparison(z, v2.z);
-  }
-};
-
-struct vec4 {
-  union {
-    struct {
-      f32 x, y, z, w;
-    };
-    struct {
-      vec2 xy;
-      vec2 zw;
-    };
-    struct {
-      vec3 xyz;
-      f32 _;
-    };
-    struct {
-      f32 r, g, b, a;
-    };
-    struct {
-      vec2 rg;
-      vec2 ba;
-    };
-    struct {
-      vec3 rgb;
-      f32 __;
-    };
-    f32 val[4];
-  };
-
-  b32 operator==(const vec4& v2) const {
-    return epsilonComparison(x, v2.x) &&
-           epsilonComparison(y, v2.y) &&
-           epsilonComparison(z, v2.z) &&
-           epsilonComparison(w, v2.w);
-  }
-};
-// NOTE: column-major
-struct mat2 {
-  union {
-    struct {
-      vec3 xTransform;
-      vec3 yTransform;
-    };
-    vec3 col[2];
-    f32 val[4];
-    f32 val2d[2][2];
-  };
-
-  b32 operator==(const mat2& B) const {
-    return col[0] == B.col[0] &&
-           col[1] == B.col[1];
-  }
-};
-
-// NOTE: column-major
-struct mat3 {
-  union {
-    struct {
-      vec3 xTransform;
-      vec3 yTransform;
-      vec3 zTransform;
-    };
-    vec3 col[3];
-    f32 val[9];
-    f32 val2d[3][3];
-  };
-
-  b32 operator==(const mat3& B) const {
-    return col[0] == B.col[0] &&
-            col[1] == B.col[1] &&
-            col[2] == B.col[2];
-  }
-};
-
-// NOTE: column-major
-struct mat4 {
-  union {
-    struct {
-      vec4 xTransform;
-      vec4 yTransform;
-      vec4 zTransform;
-      vec4 translation;
-    };
-    vec4 col[4];
-    f32 val[16];
-    f32 val2d[4][4];
-  };
-
-  b32 operator==(const mat4& B) const {
-    return col[0] == B.col[0] &&
-           col[1] == B.col[1] &&
-           col[2] == B.col[2] &&
-           col[3] == B.col[3];
-  }
-};
-
-struct quaternion {
-  union {
-    struct {
-      f32 r, i, j, k; // r = real
-    };
-    struct {
-      f32 _;
-      vec3 ijk;
-    };
-    f32 val[4];
-  };
-
-  b32 operator==(const quaternion& q2) const {
-    return epsilonComparison(r, q2.r) &&
-           epsilonComparison(i, q2.i) &&
-           epsilonComparison(j, q2.j) &&
-           epsilonComparison(k, q2.k);
-  }
-};
-
-struct complex {
-  union {
-    struct {
-      f32 r, i; // r = real
-    };
-    f32 val[2];
-  };
-
-  b32 operator==(const complex& c2) const {
-    return epsilonComparison(r, c2.r) &&
-           epsilonComparison(i, c2.i);
-  }
-};
-
-struct BoundingRect {
-  vec2 min;
-  vec2 diagonal;
-};
-
-struct BoundingBox {
-  vec3 min;
-  vec3 diagonal;
-};
-
-// floating point
-inline b32 epsilonComparison(f32 a, f32 b, f32 epsilon) {
+// f32ing point
+b32 epsilonComparison(f32 a, f32 b, f32 epsilon) {
   f32 diff = a - b;
   return (diff <= epsilon && diff >= -epsilon);
 }
 
-inline f32 step(f32 edge, f32 x) {
+f32 step(f32 edge, f32 x) {
   return x < edge ? 0.0f : 1.0f;
 }
 
-inline f32 clamp(f32 minVal, f32 maxVal, f32 x) {
+f32 clamp(f32 minVal, f32 maxVal, f32 x) {
   return Min(maxVal, Max(minVal, x));
 }
 
-inline f32 smoothStep(f32 edge1, f32 edge2, f32 x) {
+f32 smoothStep(f32 edge1, f32 edge2, f32 x) {
   f32 t = clamp((x - edge1) / (edge2 - edge1), 0.0f, 1.0f);
   return t * t * (3.0f - 2.0f * t);
 }
 
-inline f32 lerp(f32 a, f32 b, f32 t) {
+f32 lerp(f32 a, f32 b, f32 t) {
   Assert(t >= 0.0f && t <= 1.0f);
   return a - ((a + b) * t);
 }
 
-inline f32 sign(f32 x) {
+f32 sign(f32 x) {
   if (x > 0.0f) return (1.0f);
   if (x < 0.0f) return (-1.0f);
   return (0.0f);
 }
 
-inline f32 radians(f32 degrees) {
+f32 radians(f32 degrees) {
   return RadiansPerDegree * degrees;
 }
 
 // vec2
-inline f32 dot(vec2 xy1, vec2 xy2) {
+b32 operator==(const vec2& v1, const vec2& v2) {
+  return epsilonComparison(v1.x, v2.x) &&
+         epsilonComparison(v1.y, v2.y);
+}
+f32 dot(vec2 xy1, vec2 xy2) {
   return (xy1.x * xy2.x) + (xy1.y * xy2.y);
 }
 
-inline f32 magnitudeSquared(vec2 xy) {
+f32 magnitudeSquared(vec2 xy) {
   return (xy.x * xy.x) + (xy.y * xy.y);
 }
 
-inline f32 magnitude(vec2 xy) {
+f32 magnitude(vec2 xy) {
   return sqrtf((xy.x * xy.x) + (xy.y * xy.y));
 }
 
-inline vec2 normalize(const vec2& xy) {
+vec2 normalize(const vec2& xy) {
   f32 mag = magnitude(xy);
   Assert(mag != 0.0f);
   f32 magInv = 1.0f / mag;
   return vec2{xy.x * magInv, xy.y * magInv};
 }
 
-inline vec2 normalize(f32 x, f32 y) {
+vec2 normalize(f32 x, f32 y) {
   f32 mag = sqrtf(x * x + y * y);
   Assert(mag != 0.0f);
   f32 magInv = 1.0f / mag;
@@ -278,283 +67,296 @@ inline vec2 normalize(f32 x, f32 y) {
 
 // less than a 90 degree angle between the two vectors
 // v2 exists in the same half circle that centers around v1
-inline b32 similarDirection(vec2 v1, vec2 v2) {
+b32 similarDirection(vec2 v1, vec2 v2) {
   return dot(v1, v2) > 0.0f;
 }
 
-inline vec2 operator-(const vec2& xy) {
+vec2 operator-(const vec2& xy) {
   return vec2{-xy.x, -xy.y};
 }
 
-inline vec2 operator-(const vec2& xy1, const vec2& xy2) {
+vec2 operator-(const vec2& xy1, const vec2& xy2) {
   return vec2{xy1.x - xy2.x, xy1.y - xy2.y };
 }
 
-inline vec2 operator+(const vec2& xy1, const vec2& xy2) {
+vec2 operator+(const vec2& xy1, const vec2& xy2) {
   return vec2{xy1.x + xy2.x, xy1.y + xy2.y };
 }
 
-inline void operator-=(vec2& xy1, const vec2& xy2) {
+void operator-=(vec2& xy1, const vec2& xy2) {
   xy1.x -= xy2.x;
   xy1.y -= xy2.y;
 }
 
-inline void operator+=(vec2& xy1, const vec2& xy2) {
+void operator+=(vec2& xy1, const vec2& xy2) {
   xy1.x += xy2.x;
   xy1.y += xy2.y;
 }
 
-inline vec2 operator*(f32 s, vec2 xy) {
+vec2 operator*(f32 s, vec2 xy) {
   return vec2{xy.x * s, xy.y * s};
 }
 
-inline vec2 operator*(vec2 xy, f32 s) {
+vec2 operator*(vec2 xy, f32 s) {
   return vec2{xy.x * s, xy.y * s};
 }
 
-inline void operator*=(vec2& xy, f32 s) {
+void operator*=(vec2& xy, f32 s) {
   xy.x *= s;
   xy.y *= s;
 }
 
-inline vec2 operator/(const vec2& xy, const f32 s) {
+vec2 operator/(const vec2& xy, const f32 s) {
   Assert(s != 0);
   f32 scaleInv = 1.0f / s;
   return {xy.x * scaleInv, xy.y * scaleInv};
 }
 
-inline vec2 operator/(const vec2& xy1, const vec2& xy2) {
+vec2 operator/(const vec2& xy1, const vec2& xy2) {
   Assert(xy2.x != 0 && xy2.y != 0);
   return {xy1.x / xy2.x, xy1.y / xy2.y};
 }
 
-inline vec2 lerp(const vec2& a, const vec2& b, f32 t) {
+vec2 lerp(const vec2& a, const vec2& b, f32 t) {
   Assert(t >= 0.0f && t <= 1.0f);
   return a - ((a + b) * t);
 }
 
 // vec3
-inline vec3 Vec3(vec2 xy, f32 z) {
+vec3 Vec3(vec2 xy, f32 z) {
   return vec3{xy.x, xy.y, z};
 }
 
-inline vec3 Vec3(f32 value) {
+vec3 Vec3(f32 value) {
   return vec3{value, value, value};
 }
 
-inline vec3 operator-(const vec3& xyz) {
+b32 operator==(const vec3& v1, const vec3& v2) {
+  return epsilonComparison(v1.x, v2.x) &&
+         epsilonComparison(v1.y, v2.y) &&
+         epsilonComparison(v1.z, v2.z);
+}
+
+vec3 operator-(const vec3& xyz) {
   return vec3{-xyz.x, -xyz.y, -xyz.z};
 }
 
-inline vec3 operator-(const vec3& xyz1, const vec3& xyz2) {
+vec3 operator-(const vec3& xyz1, const vec3& xyz2) {
   return vec3{xyz1.x - xyz2.x, xyz1.y - xyz2.y, xyz1.z - xyz2.z };
 }
 
-inline vec3 operator+(const vec3& xyz1, const vec3& xyz2) {
+vec3 operator+(const vec3& xyz1, const vec3& xyz2) {
   return vec3{xyz1.x + xyz2.x, xyz1.y + xyz2.y, xyz1.z + xyz2.z };
 }
 
-inline void operator-=(vec3& xyz1, const vec3& xyz2) {
+void operator-=(vec3& xyz1, const vec3& xyz2) {
   xyz1.x -= xyz2.x;
   xyz1.y -= xyz2.y;
   xyz1.z -= xyz2.z;
 }
 
-inline void operator+=(vec3& xyz1, const vec3& xyz2) {
+void operator+=(vec3& xyz1, const vec3& xyz2) {
   xyz1.x += xyz2.x;
   xyz1.y += xyz2.y;
   xyz1.z += xyz2.z;
 }
 
-inline vec3 operator*(f32 s, vec3 xyz) {
+vec3 operator*(f32 s, vec3 xyz) {
   return vec3{xyz.x * s, xyz.y * s, xyz.z * s};
 }
 
-inline vec3 operator*(vec3 xyz, f32 s) {
+vec3 operator*(vec3 xyz, f32 s) {
   return vec3{xyz.x * s, xyz.y * s, xyz.z * s};
 }
 
-inline void operator*=(vec3& xyz, f32 s) {
+void operator*=(vec3& xyz, f32 s) {
   xyz.x *= s;
   xyz.y *= s;
   xyz.z *= s;
 }
 
-inline vec3 operator/(const vec3& xyz, const f32 s) {
+vec3 operator/(const vec3& xyz, const f32 s) {
   Assert(s != 0);
   f32 scaleInv = 1.0f / s;
   return {xyz.x * scaleInv, xyz.y * scaleInv, xyz.z * scaleInv};
 }
 
-inline vec3 operator/(const vec3& xyz1, const vec3& xyz2) {
+vec3 operator/(const vec3& xyz1, const vec3& xyz2) {
   Assert(xyz2.x != 0 && xyz2.y != 0 && xyz2.z != 0);
   return {xyz1.x / xyz2.x, xyz1.y / xyz2.y, xyz1.z / xyz2.z};
 }
 
-inline f32 dot(vec3 xyz1, vec3 xyz2) {
+f32 dot(vec3 xyz1, vec3 xyz2) {
   return (xyz1.x * xyz2.x) + (xyz1.y * xyz2.y) + (xyz1.z * xyz2.z);
 }
 
-inline vec3 hadamard(const vec3& xyz1, const vec3& xyz2) {
+vec3 hadamard(const vec3& xyz1, const vec3& xyz2) {
   return vec3{ xyz1.x * xyz2.x, xyz1.y * xyz2.y, xyz1.z * xyz2.z };
 }
 
-inline vec3 cross(const vec3& xyz1, const vec3& xyz2) {
+vec3 cross(const vec3& xyz1, const vec3& xyz2) {
   return vec3{ (xyz1.y * xyz2.z - xyz2.y * xyz1.z),
                (xyz1.z * xyz2.x - xyz2.z * xyz1.x),
                (xyz1.x * xyz2.y - xyz2.x * xyz1.y) };
 }
 
-inline f32 magnitudeSquared(vec3 xyz) {
+f32 magnitudeSquared(vec3 xyz) {
   return (xyz.x * xyz.x) + (xyz.y * xyz.y) + (xyz.z * xyz.z);
 }
 
-inline f32 magnitude(vec3 xyz) {
+f32 magnitude(vec3 xyz) {
   return sqrtf((xyz.x * xyz.x) + (xyz.y * xyz.y) + (xyz.z * xyz.z));
 }
 
-inline vec3 normalize(const vec3& xyz) {
+vec3 normalize(const vec3& xyz) {
   f32 mag = magnitude(xyz);
   Assert(mag != 0.0f);
   f32 magInv = 1.0f / mag;
   return magInv * xyz;
 }
 
-inline vec3 normalize(f32 x, f32 y, f32 z) {
+vec3 normalize(f32 x, f32 y, f32 z) {
   f32 mag = sqrtf(x * x + y * y + z * z);
   Assert(mag != 0.0f);
   f32 magInv = 1.0f / mag;
   return vec3{x * magInv, y * magInv, z * magInv};
 }
 
-inline b32 degenerate(const vec3& v) {
+b32 degenerate(const vec3& v) {
   return v == vec3{0.0f, 0.0f, 0.0f};
 }
 
 // v2 is assumed to be normalized
-inline vec3 projection(const vec3& v1, const vec3& ontoV2) {
+vec3 projection(const vec3& v1, const vec3& ontoV2) {
   f32 dotV1V2 = dot(v1, ontoV2);
   return dotV1V2 * ontoV2;
 }
 
 // v2 is assumed to be normalized
-inline vec3 perpendicularTo(const vec3& v1, const vec3& ontoV2) {
+vec3 perpendicularTo(const vec3& v1, const vec3& ontoV2) {
   vec3 parallel = projection(v1, ontoV2);
   return v1 - parallel;
 }
 
 // less than a 90 degree angle between the two vectors
 // v2 exists in the same hemisphere that centers around v1
-inline b32 similarDirection(const vec3& v1, const vec3& v2) {
+b32 similarDirection(const vec3& v1, const vec3& v2) {
   return dot(v1, v2) > 0.0f;
 }
 
-inline vec3 lerp(const vec3& a, const vec3& b, f32 t) {
+vec3 lerp(const vec3& a, const vec3& b, f32 t) {
   Assert(t >= 0.0f && t <= 1.0f);
   return a - ((a + b) * t);
 }
 
 // vec4
-inline vec4 Vec4(vec3 xyz, f32 w) {
+vec4 Vec4(vec3 xyz, f32 w) {
   return vec4{xyz.x, xyz.y, xyz.z, w};
 }
 
-inline vec4 Vec4(f32 x, vec3 yzw) {
+vec4 Vec4(f32 x, vec3 yzw) {
   return vec4{x, yzw.val[0], yzw.val[1], yzw.val[2]};
 }
 
-inline vec4 Vec4(vec2 xy, vec2 zw) {
+vec4 Vec4(vec2 xy, vec2 zw) {
   return vec4{xy.x, xy.y, zw.val[0], zw.val[1]};
 }
 
-inline f32 dot(vec4 xyzw1, vec4 xyzw2) {
+b32 operator==(const vec4& v1, const vec4& v2) {
+  return epsilonComparison(v1.x, v2.x) &&
+         epsilonComparison(v1.y, v2.y) &&
+         epsilonComparison(v1.z, v2.z) &&
+         epsilonComparison(v1.w, v2.w);
+}
+
+f32 dot(vec4 xyzw1, vec4 xyzw2) {
   return (xyzw1.x * xyzw2.x) + (xyzw1.y * xyzw2.y) + (xyzw1.z * xyzw2.z) + (xyzw1.w * xyzw2.w);
 }
 
-inline f32 magnitudeSquared(vec4 xyzw) {
+f32 magnitudeSquared(vec4 xyzw) {
   return (xyzw.x * xyzw.x) + (xyzw.y * xyzw.y) + (xyzw.z * xyzw.z) + (xyzw.w * xyzw.w);
 }
 
-inline f32 magnitude(vec4 xyzw) {
+f32 magnitude(vec4 xyzw) {
   return sqrtf((xyzw.x * xyzw.x) + (xyzw.y * xyzw.y) + (xyzw.z * xyzw.z) + (xyzw.w * xyzw.w));
 }
 
-inline vec4 normalize(const vec4& xyzw) {
+vec4 normalize(const vec4& xyzw) {
   f32 mag = magnitude(xyzw);
   Assert(mag != 0.0f);
   f32 magInv = 1.0f / mag;
   return vec4{xyzw.x * magInv, xyzw.y * magInv, xyzw.z * magInv, xyzw.w * magInv};
 }
 
-inline vec4 normalize(f32 x, f32 y, f32 z, f32 w) {
+vec4 normalize(f32 x, f32 y, f32 z, f32 w) {
   f32 mag = sqrtf(x * x + y * y + z * z + w * w);
   Assert(mag != 0.0f);
   f32 magInv = 1.0f / mag;
   return vec4{x * magInv, y * magInv, z * magInv, w * magInv};
 }
 
-inline vec4 operator-(const vec4& xyzw) {
+vec4 operator-(const vec4& xyzw) {
   return vec4{-xyzw.x, -xyzw.y, -xyzw.z, -xyzw.w };
 }
 
-inline vec4 operator-(const vec4& xyzw1, const vec4& xyzw2) {
+vec4 operator-(const vec4& xyzw1, const vec4& xyzw2) {
   return vec4{ xyzw1.x - xyzw2.x, xyzw1.y - xyzw2.y, xyzw1.z - xyzw2.z, xyzw1.w - xyzw2.w };
 }
 
-inline vec4 operator+(const vec4& xyzw1, const vec4& xyzw2) {
+vec4 operator+(const vec4& xyzw1, const vec4& xyzw2) {
   return vec4{ xyzw1.x + xyzw2.x, xyzw1.y + xyzw2.y, xyzw1.z + xyzw2.z, xyzw1.w + xyzw2.w };
 }
 
-inline void operator-=(vec4& xyzw1, const vec4& xyzw2){
+void operator-=(vec4& xyzw1, const vec4& xyzw2){
   xyzw1.x -= xyzw2.x;
   xyzw1.y -= xyzw2.y;
   xyzw1.z -= xyzw2.z;
   xyzw1.w -= xyzw2.w;
 }
 
-inline void operator+=(vec4& xyzw1, const vec4& xyzw2) {
+void operator+=(vec4& xyzw1, const vec4& xyzw2) {
   xyzw1.x += xyzw2.x;
   xyzw1.y += xyzw2.y;
   xyzw1.z += xyzw2.z;
   xyzw1.w += xyzw2.w;
 }
 
-inline vec4 operator*(f32 s, vec4 xyzw) {
+vec4 operator*(f32 s, vec4 xyzw) {
   return vec4{xyzw.x * s, xyzw.y * s, xyzw.z * s, xyzw.w * s};
 }
 
-inline vec4 operator*(vec4 xyzw, f32 s) {
+vec4 operator*(vec4 xyzw, f32 s) {
   return vec4{xyzw.x * s, xyzw.y * s, xyzw.z * s, xyzw.w * s};
 }
 
-inline void operator*=(vec4& xyzw, f32 s) {
+void operator*=(vec4& xyzw, f32 s) {
   xyzw.x *= s;
   xyzw.y *= s;
   xyzw.z *= s;
   xyzw.w *= s;
 }
 
-inline vec4 operator/(const vec4& xyzw, const f32 s) {
+vec4 operator/(const vec4& xyzw, const f32 s) {
   Assert(s != 0);
   f32 scaleInv = 1.0f / s;
   return {xyzw.x * scaleInv, xyzw.y * scaleInv, xyzw.z * scaleInv, xyzw.w * scaleInv};
 }
 
-inline vec4 operator/(const vec4& xyzw1, const vec4& xyzw2) {
+vec4 operator/(const vec4& xyzw1, const vec4& xyzw2) {
   Assert(xyzw2.x != 0 && xyzw2.y != 0 && xyzw2.z != 0 && xyzw2.w != 0);
   return {xyzw1.x / xyzw2.x, xyzw1.y / xyzw2.y, xyzw1.z / xyzw2.z, xyzw1.w / xyzw2.w};
 }
 
-inline vec4 lerp(const vec4& a, const vec4& b, f32 t) {
+vec4 lerp(const vec4& a, const vec4& b, f32 t) {
   Assert(t >= 0.0f && t <= 1.0f);
   return a - ((a + b) * t);
 }
 
-inline vec4 min(const vec4& xyzw1, const vec4& xyzw2) {
+vec4 min(const vec4& xyzw1, const vec4& xyzw2) {
   return { Min(xyzw1.x, xyzw2.x), Min(xyzw1.y, xyzw2.y), Min(xyzw1.z, xyzw2.z), Min(xyzw1.w, xyzw2.w) };
 }
 
-inline vec4 max(const vec4& xyzw1, const vec4& xyzw2) {
+vec4 max(const vec4& xyzw1, const vec4& xyzw2) {
   return { Max(xyzw1.x, xyzw2.x), Max(xyzw1.y, xyzw2.y), Max(xyzw1.z, xyzw2.z), Max(xyzw1.w, xyzw2.w) };
 }
 
@@ -564,11 +366,16 @@ complex Complex(f32 angle){
   return { cosf(angle), sinf(angle) };
 }
 
-inline f32 magnitudeSquared(complex c) {
+b32 operator==(const complex& c1, const complex& c2) {
+  return epsilonComparison(c1.r, c2.r) &&
+         epsilonComparison(c1.i, c2.i);
+}
+
+f32 magnitudeSquared(complex c) {
   return (c.r * c.r) + (c.i * c.i);
 }
 
-inline f32 magnitude(complex c) {
+f32 magnitude(complex c) {
   return sqrtf(magnitudeSquared(c));
 }
 
@@ -614,42 +421,59 @@ quaternion Quaternion(vec3 v, f32 angle)
   return result;
 }
 
-inline quaternion identity_quaternion() {
+b32 operator==(const quaternion& q1, const quaternion& q2) {
+  return epsilonComparison(q1.r, q2.r) &&
+         epsilonComparison(q1.i, q2.i) &&
+         epsilonComparison(q1.j, q2.j) &&
+         epsilonComparison(q1.k, q2.k);
+}
+
+quaternion identity_quaternion() {
   return {1.0f, 0.0f, 0.0f, 0.0f};
 }
 
-inline f32 magnitudeSquared(quaternion rijk) {
+f32 magnitudeSquared(quaternion rijk) {
   return (rijk.r * rijk.r) + (rijk.i * rijk.i) + (rijk.j * rijk.j) + (rijk.k * rijk.k);
 }
 
-inline f32 magnitude(quaternion q) {
+f32 magnitude(quaternion q) {
   return sqrtf(magnitudeSquared(q));
 }
 
 // NOTE: Conjugate is equal to the inverse when the quaternion is unit length
-inline quaternion conjugate(quaternion q) {
+quaternion conjugate(quaternion q) {
   return {q.r, -q.i, -q.j, -q.k};
 }
 
-inline f32 dot(const quaternion& q1, const quaternion& q2) {
+f32 dot(const quaternion& q1, const quaternion& q2) {
   return (q1.r * q2.r) + (q1.i * q2.i) + (q1.j * q2.j) + (q1.k * q2.k);
 }
 
-inline quaternion normalize(const quaternion& q) {
+quaternion normalize(const quaternion& q) {
   f32 mag = sqrtf((q.r * q.r) + (q.i * q.i) + (q.j * q.j) + (q.k * q.k));
   Assert(mag != 0.0f);
   f32 magInv = 1.0f / mag;
   return {q.r * magInv, q.i * magInv, q.j * magInv, q.k * magInv};
 }
 
-// TODO: overloading star operator for this may lead to confusion
+quaternion operator*(const quaternion& q1, const quaternion& q2) {
 /*
+ * Quaternion multiplication definitions
  * ii = jj = kk = ijk = -1
  * ij = -ji = k
  * jk = -kj = i
  * ki = -ik = j
  */
-vec3 operator*(const quaternion& q, vec3 v) {
+
+  quaternion q1q2;
+  q1q2.r = (q1.r * q2.r) + -(q1.i * q2.i) + -(q1.j * q2.j) + -(q1.k * q2.k);
+  q1q2.i = (q1.i * q2.r) +  (q1.r * q2.i) + -(q1.k * q2.j) +  (q1.j * q2.k);
+  q1q2.j = (q1.j * q2.r) +  (q1.r * q2.j) +  (q1.k * q2.i) + -(q1.i * q2.k);
+  q1q2.k = (q1.k * q2.r) +  (q1.r * q2.k) + -(q1.j * q2.i) +  (q1.i * q2.j);
+  return q1q2;
+}
+
+vec3 rotate(const vec3& v, const quaternion& q) {
 #ifndef NDEBUG
   // Assert that we are only ever dealing with unit quaternions when rotating a vector
   f32 qMagn = magnitudeSquared(q);
@@ -660,10 +484,18 @@ vec3 operator*(const quaternion& q, vec3 v) {
   quaternion qv;
   quaternion qInv = conjugate(q);
 
+/*
+ * Quaternion multiplication definitions
+ * ii = jj = kk = ijk = -1
+ * ij = -ji = k
+ * jk = -kj = i
+ * ki = -ik = j
+ */
+
   qv.r = -(q.i * v.i) + -(q.j * v.j) + -(q.k * v.k);
   qv.i =  (q.r * v.i) + -(q.k * v.j) +  (q.j * v.k);
-  qv.j =  (q.k * v.i) +  (q.r * v.j) + -(q.i * v.k);
-  qv.k = -(q.j * v.i) +  (q.i * v.j) +  (q.r * v.k);
+  qv.j =  (q.r * v.j) +  (q.k * v.i) + -(q.i * v.k);
+  qv.k =  (q.r * v.k) + -(q.j * v.i) +  (q.i * v.j);
 
   // result.r = (qv.r * qInv.r) + -(qv.i * qInv.i) + -(qv.j * qInv.j) + -(qv.k * qInv.k); \\ equates to zero
   result.i = (qv.i * qInv.r) +  (qv.r * qInv.i) + -(qv.k * qInv.j) +  (qv.j * qInv.k);
@@ -673,32 +505,23 @@ vec3 operator*(const quaternion& q, vec3 v) {
   return result.ijk;
 }
 
-quaternion operator*(const quaternion& q1, quaternion q2) {
-  quaternion q1q2;
-  q1q2.r = -(q1.i * q2.i) + -(q1.j * q2.j) + -(q1.k * q2.k);
-  q1q2.i = (q1.r * q2.i) + -(q1.k * q2.j) + (q1.j * q2.k);
-  q1q2.j = (q1.k * q2.i) + (q1.r * q2.j) + -(q1.i * q2.k);
-  q1q2.k = -(q1.j * q2.i) + (q1.i * q2.j) + (q1.r * q2.k);
-  return q1q2;
-}
-
-inline quaternion operator+(const quaternion& q1, const quaternion& q2) {
+quaternion operator+(const quaternion& q1, const quaternion& q2) {
   return {q1.r + q2.r, q1.i + q2.i, q1.j + q2.j, q1.k + q2.k};
 }
 
-inline quaternion operator-(const quaternion& q1, const quaternion& q2) {
+quaternion operator-(const quaternion& q1, const quaternion& q2) {
   return {q1.r - q2.r, q1.i - q2.i, q1.j - q2.j, q1.k - q2.k};
 }
 
-inline quaternion operator*(const quaternion& q1, const f32 s) {
+quaternion operator*(const quaternion& q1, const f32 s) {
   return {q1.r * s, q1.i * s, q1.j * s, q1.k * s};
 }
 
-inline quaternion operator*(const f32 s, const quaternion& q1) {
+quaternion operator*(const f32 s, const quaternion& q1) {
   return {q1.r * s, q1.i * s, q1.j * s, q1.k * s};
 }
 
-inline quaternion operator/(const quaternion& q1, const f32 s) {
+quaternion operator/(const quaternion& q1, const f32 s) {
   Assert(s != 0);
   f32 scaleInv = 1.0f / s;
   return {q1.r * scaleInv, q1.i * scaleInv, q1.j * scaleInv, q1.k * scaleInv};
@@ -737,42 +560,53 @@ quaternion orient(const vec3& startOrientation, const vec3& endOrientation) {
 }
 
 // mat2
-inline mat2 identity_mat2() {
+b32 operator==(const mat2& A, const mat2& B) {
+  return A.col[0] == B.col[0] &&
+         A.col[1] == B.col[1];
+}
+
+mat2 identity_mat2() {
   return mat2 {
           1.0f, 0.0f,
           0.0f, 1.0f,
   };
 }
 
-inline mat2 scale_mat2(f32 scale) {
+mat2 scale_mat2(f32 scale) {
   return mat2 {
           scale, 0.0f,
           0.0f, scale,
   };
 }
 
-inline mat2 scale_mat2(vec3 scale) {
+mat2 scale_mat2(vec3 scale) {
   return mat2 {
           scale.x, 0.0f,
           0.0f, scale.y,
   };
 }
 
-inline mat2 transpose(const mat2& A) {
+mat2 transpose(const mat2& A) {
   return mat2 {
           A.val2d[0][0], A.val2d[1][0],
           A.val2d[0][1], A.val2d[1][1],
   };
 }
 
-inline mat2 rotate(float radians) {
-  float sine = sin(radians);
-  float cosine = cos(radians);
+mat2 rotate(f32 radians) {
+  f32 sine = (f32)sin(radians);
+  f32 cosine = (f32)cos(radians);
   return mat2{cosine, -sine, sine, cosine};
 }
 
 // mat3
-inline mat3 identity_mat3() {
+b32 operator==(const mat3& A, const mat3& B) {
+  return A.col[0] == B.col[0] &&
+         A.col[1] == B.col[1] &&
+         A.col[2] == B.col[2];
+}
+
+mat3 identity_mat3() {
   return mat3 {
           1.0f, 0.0f, 0.0f,
           0.0f, 1.0f, 0.0f,
@@ -780,7 +614,7 @@ inline mat3 identity_mat3() {
   };
 }
 
-inline mat3 scale_mat3(f32 scale) {
+mat3 scale_mat3(f32 scale) {
   return mat3 {
           scale, 0.0f, 0.0f,
           0.0f, scale, 0.0f,
@@ -788,7 +622,7 @@ inline mat3 scale_mat3(f32 scale) {
   };
 }
 
-inline mat3 scale_mat3(vec3 scale) {
+mat3 scale_mat3(vec3 scale) {
   return mat3 {
           scale.x, 0.0f, 0.0f,
           0.0f, scale.y, 0.0f,
@@ -796,7 +630,7 @@ inline mat3 scale_mat3(vec3 scale) {
   };
 }
 
-inline mat3 transpose(const mat3& A) {
+mat3 transpose(const mat3& A) {
   return mat3 {
           A.val2d[0][0], A.val2d[1][0], A.val2d[2][0],
           A.val2d[0][1], A.val2d[1][1], A.val2d[2][1],
@@ -805,7 +639,7 @@ inline mat3 transpose(const mat3& A) {
 }
 
 // radians in radians
-inline mat3 rotate_mat3(f32 radians, vec3 v) {
+mat3 rotate_mat3(f32 radians, vec3 v) {
   vec3 axis(normalize(v));
 
   f32 const cosA = cosf(radians);
@@ -828,15 +662,15 @@ inline mat3 rotate_mat3(f32 radians, vec3 v) {
   return rotate;
 }
 
-inline mat3 rotate_mat3(quaternion q) {
+mat3 rotate_mat3(quaternion q) {
   mat3 resultMat{}; // zero out matrix
-  resultMat.xTransform = q * vec3{1.0f, 0.0f, 0.0f};
-  resultMat.yTransform = q * vec3{0.0f, 1.0f, 0.0f};
-  resultMat.zTransform = q * vec3{0.0f, 0.0f, 1.0f};
+  resultMat.xTransform = rotate(vec3{1.0f, 0.0f, 0.0f}, q);
+  resultMat.yTransform = rotate(vec3{0.0f, 1.0f, 0.0f}, q);
+  resultMat.zTransform = rotate(vec3{0.0f, 0.0f, 1.0f}, q);
   return resultMat;
 }
 
-inline vec3 operator*(const mat3& M, const vec3& v) {
+vec3 operator*(const mat3& M, const vec3& v) {
   vec3 result =  M.col[0] * v.x;
   result      += M.col[1] * v.y;
   result      += M.col[2] * v.z;
@@ -861,7 +695,7 @@ mat3 operator*(const mat3& A, const mat3& B) {
 }
 
 // mat4
-inline mat4 Mat4(mat3 M) {
+mat4 Mat4(mat3 M) {
   return mat4{
           M.val2d[0][1], M.val2d[0][1], M.val2d[0][1], 0.0f,
           M.val2d[0][1], M.val2d[0][1], M.val2d[0][1], 0.0f,
@@ -870,7 +704,14 @@ inline mat4 Mat4(mat3 M) {
   };
 }
 
-inline mat4 identity_mat4() {
+b32 operator==(const mat4& A, const mat4& B) {
+  return A.col[0] == B.col[0] &&
+         A.col[1] == B.col[1] &&
+         A.col[2] == B.col[2] &&
+         A.col[3] == B.col[3];
+}
+
+mat4 identity_mat4() {
   return mat4 {
           1.0f, 0.0f, 0.0f, 0.0f,
           0.0f, 1.0f, 0.0f, 0.0f,
@@ -879,34 +720,34 @@ inline mat4 identity_mat4() {
   };
 }
 
-inline mat4 scale_mat4(f32 scale) {
+mat4 scale_mat4(f32 scale) {
   return mat4 {
           scale,  0.0f,  0.0f, 0.0f,
-           0.0f, scale,  0.0f, 0.0f,
-           0.0f,  0.0f, scale, 0.0f,
-           0.0f,  0.0f,  0.0f, 1.0f,
+          0.0f, scale,  0.0f, 0.0f,
+          0.0f,  0.0f, scale, 0.0f,
+          0.0f,  0.0f,  0.0f, 1.0f,
   };
 }
 
-inline mat4 scale_mat4(vec3 scale) {
+mat4 scale_mat4(vec3 scale) {
   return mat4 {
           scale.x,    0.0f,    0.0f, 0.0f,
-             0.0f, scale.y,    0.0f, 0.0f,
-             0.0f,    0.0f, scale.z, 0.0f,
-             0.0f,    0.0f,    0.0f, 1.0f,
+          0.0f, scale.y,    0.0f, 0.0f,
+          0.0f,    0.0f, scale.z, 0.0f,
+          0.0f,    0.0f,    0.0f, 1.0f,
   };
 }
 
-inline mat4 translate_mat4(vec3 translation) {
+mat4 translate_mat4(vec3 translation) {
   return mat4 {
-                   1.0f,          0.0f,          0.0f, 0.0f,
-                   0.0f,          1.0f,          0.0f, 0.0f,
-                   0.0f,          0.0f,          1.0f, 0.0f,
+          1.0f,          0.0f,          0.0f, 0.0f,
+          0.0f,          1.0f,          0.0f, 0.0f,
+          0.0f,          0.0f,          1.0f, 0.0f,
           translation.x, translation.y, translation.z, 1.0f,
   };
 }
 
-inline mat4 transpose(const mat4& A) {
+mat4 transpose(const mat4& A) {
   return mat4 {
           A.val2d[0][0], A.val2d[1][0], A.val2d[2][0], A.val2d[3][0],
           A.val2d[0][1], A.val2d[1][1], A.val2d[2][1], A.val2d[3][1],
@@ -916,7 +757,7 @@ inline mat4 transpose(const mat4& A) {
 }
 
 // radians in radians
-inline mat4 rotate_xyPlane_mat4(f32 radians) {
+mat4 rotate_xyPlane_mat4(f32 radians) {
   f32 const cosA = cosf(radians);
   f32 const sinA = sinf(radians);
 
@@ -930,7 +771,7 @@ inline mat4 rotate_xyPlane_mat4(f32 radians) {
 }
 
 // radians in radians
-inline mat4 rotate_mat4(f32 radians, vec3 v) {
+mat4 rotate_mat4(f32 radians, vec3 v) {
   vec3 axis(normalize(v));
 
   f32 const cosA = cosf(radians);
@@ -958,7 +799,7 @@ inline mat4 rotate_mat4(f32 radians, vec3 v) {
   return rotate;
 }
 
-inline mat4 scaleTrans_mat4(const f32 scale, const vec3& translation) {
+mat4 scaleTrans_mat4(const f32 scale, const vec3& translation) {
   return mat4 {
           scale,    0.0f,    0.0f, 0.0f,
           0.0f, scale,    0.0f, 0.0f,
@@ -967,7 +808,7 @@ inline mat4 scaleTrans_mat4(const f32 scale, const vec3& translation) {
   };
 }
 
-inline mat4 scaleTrans_mat4(const vec3& scale, const vec3& translation) {
+mat4 scaleTrans_mat4(const vec3& scale, const vec3& translation) {
   return mat4 {
           scale.x,    0.0f,    0.0f, 0.0f,
           0.0f, scale.y,    0.0f, 0.0f,
@@ -976,7 +817,7 @@ inline mat4 scaleTrans_mat4(const vec3& scale, const vec3& translation) {
   };
 }
 
-inline mat4 scaleRotTrans_mat4(const vec3& scale, const vec3& rotAxis, const f32 angle, const vec3& translation) {
+mat4 scaleRotTrans_mat4(const vec3& scale, const vec3& rotAxis, const f32 angle, const vec3& translation) {
   vec3 axis(normalize(rotAxis));
 
   f32 const cosA = cosf(angle);
@@ -1005,11 +846,11 @@ inline mat4 scaleRotTrans_mat4(const vec3& scale, const vec3& rotAxis, const f32
   return scaleRotTransMat;
 }
 
-inline mat4 scaleRotTrans_mat4(const vec3& scale, const quaternion& q, const vec3& translation) {
+mat4 scaleRotTrans_mat4(const vec3& scale, const quaternion& q, const vec3& translation) {
   mat4 scaleRotTransMat;
-  scaleRotTransMat.xTransform.xyz = (q * vec3{1.0f, 0.0f, 0.0f}) * scale.x;
-  scaleRotTransMat.yTransform.xyz = (q * vec3{0.0f, 1.0f, 0.0f}) * scale.y;
-  scaleRotTransMat.zTransform.xyz = (q * vec3{0.0f, 0.0f, 1.0f}) * scale.z;
+  scaleRotTransMat.xTransform.xyz = rotate(vec3{1.0f, 0.0f, 0.0f}, q) * scale.x;
+  scaleRotTransMat.yTransform.xyz = rotate(vec3{0.0f, 1.0f, 0.0f}, q) * scale.y;
+  scaleRotTransMat.zTransform.xyz = rotate(vec3{0.0f, 0.0f, 1.0f}, q) * scale.z;
   scaleRotTransMat.translation.xyz = translation;
 
   scaleRotTransMat.val2d[0][3] = 0.0f;
@@ -1020,16 +861,16 @@ inline mat4 scaleRotTrans_mat4(const vec3& scale, const quaternion& q, const vec
   return scaleRotTransMat;
 }
 
-inline mat4 rotate_mat4(quaternion q) {
+mat4 rotate_mat4(quaternion q) {
   mat4 resultMat{}; // zero out matrix
-  resultMat.xTransform.xyz = q * vec3{1.0f, 0.0f, 0.0f};
-  resultMat.yTransform.xyz = q * vec3{0.0f, 1.0f, 0.0f};
-  resultMat.zTransform.xyz = q * vec3{0.0f, 0.0f, 1.0f};
+  resultMat.xTransform.xyz = rotate(vec3{1.0f, 0.0f, 0.0f}, q);
+  resultMat.yTransform.xyz = rotate(vec3{0.0f, 1.0f, 0.0f}, q);
+  resultMat.zTransform.xyz = rotate(vec3{0.0f, 0.0f, 1.0f}, q);
   resultMat.val2d[3][3] = 1.0f;
   return resultMat;
 }
 
-inline vec4 operator*(const mat4& M, const vec4& v) {
+vec4 operator*(const mat4& M, const vec4& v) {
   vec4 result =  M.col[0] * v.x;
   result      += M.col[1] * v.y;
   result      += M.col[2] * v.z;
@@ -1073,33 +914,33 @@ f32 fieldOfView(f32 screenWidth, f32 screenDist) {
 
 // real-time rendering 4.7.1
 // This projection is for a canonical view volume goes from <-1,1>
-inline mat4 orthographic(f32 l, f32 r, f32 b, f32 t, f32 n, f32 f) {
-    // NOTE: Projection matrices are all about creating properly placing
-    // objects in the canonical view volume, which in the case of OpenGL
-    // is from <-1,-1,-1> to <1,1,1>.
-    // The 3x3 matrix is dividing vectors/points by the specified dimensions
-    // and multiplying by two. That is because the the canonical view volume
-    // in our case actually has dimensions of <2,2,2>. So we map our specified
-    // dimensions between the values of 0 and 2
-    // The translation value is necessary in order to translate the values from
-    // the range of 0 and 2 to the range of -1 and 1
-    // The translation may look odd and that is because this matrix is a
-    // combination of a Scale matrix, S, and a translation matrix, T, in
-    // which the translation must be performed first. Taking the x translation
-    // for example, we want to translate it by -(l + r) / 2. Which would
-    // effectively move the origin's x value in the center of l & r. However,
-    // the scaling changes that translation to [(2 / (r + l)) * (-(r + l) / 2)],
-    // which simplifies to what is seen below for the x translation.
-    return {
-             2 / (r - l),                0,                0, 0,
-                       0,      2 / (t - b),                0, 0,
-                       0,                0,      2 / (f - n), 0,
-        -(r + l)/(r - l), -(t + b)/(t - b), -(f + n)/(f - n), 1
-    };
+mat4 orthographic(f32 l, f32 r, f32 b, f32 t, f32 n, f32 f) {
+  // NOTE: Projection matrices are all about creating properly placing
+  // objects in the canonical view volume, which in the case of OpenGL
+  // is from <-1,-1,-1> to <1,1,1>.
+  // The 3x3 matrix is dividing vectors/points by the specified dimensions
+  // and multiplying by two. That is because the the canonical view volume
+  // in our case actually has dimensions of <2,2,2>. So we map our specified
+  // dimensions between the values of 0 and 2
+  // The translation value is necessary in order to translate the values from
+  // the range of 0 and 2 to the range of -1 and 1
+  // The translation may look odd and that is because this matrix is a
+  // combination of a Scale matrix, S, and a translation matrix, T, in
+  // which the translation must be performed first. Taking the x translation
+  // for example, we want to translate it by -(l + r) / 2. Which would
+  // effectively move the origin's x value in the center of l & r. However,
+  // the scaling changes that translation to [(2 / (r + l)) * (-(r + l) / 2)],
+  // which simplifies to what is seen below for the x translation.
+  return {
+          2 / (r - l),                0,                0, 0,
+          0,      2 / (t - b),                0, 0,
+          0,                0,      2 / (f - n), 0,
+          -(r + l)/(r - l), -(t + b)/(t - b), -(f + n)/(f - n), 1
+  };
 }
 
 // real-time rendering 4.7.2
-inline mat4 perspective(f32 l, f32 r, f32 b, f32 t, f32 n, f32 f) {
+mat4 perspective(f32 l, f32 r, f32 b, f32 t, f32 n, f32 f) {
   mat4 result;
 
   result.xTransform = {(2.0f * n) / (r - l), 0.0f, 0.0f, 0.0f};
@@ -1110,7 +951,7 @@ inline mat4 perspective(f32 l, f32 r, f32 b, f32 t, f32 n, f32 f) {
   return result;
 }
 
-inline mat4 perspectiveInverse(f32 l, f32 r, f32 b, f32 t, f32 n, f32 f) {
+mat4 perspectiveInverse(f32 l, f32 r, f32 b, f32 t, f32 n, f32 f) {
   mat4 result;
 
   result.xTransform = {(r - l) / (2.0f * n), 0.0f, 0.0f, 0.0f};
@@ -1123,7 +964,7 @@ inline mat4 perspectiveInverse(f32 l, f32 r, f32 b, f32 t, f32 n, f32 f) {
 
 // real-time rendering 4.7.2
 // aspect ratio is equivalent to width / height
-inline mat4 perspective(f32 fovVert, f32 aspect, f32 n, f32 f) {
+mat4 perspective(f32 fovVert, f32 aspect, f32 n, f32 f) {
   mat4 result;
 
   const f32 c = 1.0f / tanf(fovVert / 2.0f);
@@ -1135,7 +976,7 @@ inline mat4 perspective(f32 fovVert, f32 aspect, f32 n, f32 f) {
   return result;
 }
 
-inline mat4 perspectiveInverse(f32 fovVert, f32 aspect, f32 n, f32 f) {
+mat4 perspectiveInverse(f32 fovVert, f32 aspect, f32 n, f32 f) {
   mat4 result;
 
   const f32 c = 1.0f / tanf(fovVert / 2.0f);
@@ -1256,5 +1097,3 @@ bool overlap(BoundingBox bbA, BoundingBox bbB) {
           (bbBMax.y > bbA.min.y && bbB.min.y < bbAMax.y)  && // overlap in X
           (bbBMax.z > bbA.min.z && bbB.min.z < bbAMax.z));   // overlap in Z
 }
-
-#undef COMPARISON_EPSILON

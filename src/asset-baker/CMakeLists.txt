@@ -9,5 +9,5 @@ target_include_directories(asset-baker PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
 #set(INCL_DIR "C:/developer/dependencies/include")
 #include_directories(${INCL_DIR})
 
-set(LIBS tinyobjloader stb_image tinygltf assetlib json lz4) # nvtt assimp
+set(LIBS tinyobjloader stb_image tinygltf assetlib json lz4 noop_math) # nvtt assimp
 target_link_libraries(asset-baker ${LIBS})

@@ -18,7 +18,7 @@ namespace fs = std::filesystem;
 #include <material_asset.h>
 #include <prefab_asset.h>
 
-#include "../noop_math.h"
+#include "../noop_math/noop_math.h"
 
 using namespace assets;
 

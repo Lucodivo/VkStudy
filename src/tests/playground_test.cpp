@@ -3,15 +3,8 @@
 namespace {
   class PlaygroundTest : public testing::Test {
   protected:
-    // run immediately before a test starts
-    void SetUp() override {
-
-    }
-
-    // invoked immediately after a test finishes
-    void TearDown() override {
-
-    }
+    void SetUp() override { } // run immediately before a test starts
+    void TearDown() override { } // invoked immediately after a test finishes
   };
 
   // TEST_F is for using "fixtures"
