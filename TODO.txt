@@ -1,0 +1,6 @@
+=== VK Study ===
+
+
+=== Asset Baker ===
+- Use "modified" timestamp to avoid baking unchanged assets
+

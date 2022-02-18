@@ -20,8 +20,8 @@
 #include <spirv_reflect.h>
 
 #include <imgui.h>
-#include <imgui_impl_sdl.h>
-#include <imgui_impl_vulkan.h>
+#include <backends/imgui_impl_sdl.h>
+#include <backends/imgui_impl_vulkan.h>
 
 #include <VkBootstrap.h>
 

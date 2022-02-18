@@ -5,7 +5,6 @@
 /.idea
 /.github
 /assets*
-/third_party/*/
 /shaders/spv
 CMakeSettings.json
 cmake*/
