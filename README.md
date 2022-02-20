@@ -3,6 +3,8 @@
 This project currently serves as my own personal project for studying Vulkan.
 
 ### Building (⚠IN PROGRESS⚠)
+- This project uses a unity build system. All `#includes` are in `vk_study.h` and most of the project is compiled all at
+  once through `vk_study.cpp`.
 - `sdl2_DIR` environment variable in third_party/CMakeLists.txt must be set to 
   SDL2 library path (ex: "C:/developer/dependencies/libs/SDL2-2.0.18").
 

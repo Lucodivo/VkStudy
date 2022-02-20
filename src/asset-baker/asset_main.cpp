@@ -19,6 +19,7 @@ namespace fs = std::filesystem;
 #include <prefab_asset.h>
 
 #include "../noop_math/noop_math.h"
+using namespace noop;
 
 using namespace assets;
 
@@ -169,71 +170,6 @@ int main(int argc, char* argv[]) {
   writeOutputData(converterState);
 
   return 0;
-}
-
-void addEscapeSlashes(std::string& str) {
-  u32 originalStrLength = (u32)str.size();
-
-  std::vector<u32> escapeSlashIndices;
-  escapeSlashIndices.reserve(originalStrLength / 2);
-
-  u32 slashCount = 0;
-  for(u32 i = 0; i < originalStrLength; i++) {
-    char& c = str[i];
-    if(c == '\\') {
-      escapeSlashIndices.push_back(i);
-      slashCount++;
-    }
-  }
-
-  u32 newStrLength = originalStrLength + slashCount;
-  str.resize(newStrLength);
-
-  u32 newStrIter = newStrLength - 1;
-  u32 oldStrIter = originalStrLength - 1;
-  while(slashCount > 0) {
-    if(str[oldStrIter] == '\\') {
-      str[newStrIter--] = '\\';
-      slashCount--;
-    }
-    str[newStrIter--] = str[oldStrIter--];
-  }
-}
-
-void writeOutputData(const ConverterState& converterState) {
-  if(!fs::is_directory(converterState.outputFileDir)) {
-    fs::create_directory(converterState.outputFileDir);
-  }
-
-  std::ofstream outTexturesFile, outMeshFile, outMaterialFile, outPrefabFile;
-  outTexturesFile.open((converterState.outputFileDir / "baked_textures.incl").string(), std::ios::out);
-  outMeshFile.open((converterState.outputFileDir / "baked_meshes.incl").string(), std::ios::out);
-  outMaterialFile.open((converterState.outputFileDir / "baked_materials.incl").string(), std::ios::out);
-  outPrefabFile.open((converterState.outputFileDir / "baked_prefabs.incl").string(), std::ios::out);
-
-  for(const fs::path& path: converterState.bakedFilePaths) {
-    std::string extensionStr = path.extension().string();
-    const char* extension = extensionStr.c_str();
-    std::string fileName = path.filename().replace_extension("").string();
-    const char tokensToReplace[] = {'.', '-'};
-    replace(fileName, tokensToReplace, ArrayCount(tokensToReplace), '_');
-    std::string filePath = path.string();
-    addEscapeSlashes(filePath);
-    if(strcmp(extension, extensions.texture) == 0) {
-      outTexturesFile << "BakedTexture(" << fileName << ",\"" << filePath << "\")\n";
-    } else if(strcmp(extension, extensions.material) == 0) {
-      outMaterialFile << "BakedMaterial(" << fileName << ",\"" << filePath << "\")\n";
-    } else if(strcmp(extension, extensions.mesh) == 0) {
-      outMeshFile << "BakedMesh(" << fileName << ",\"" << filePath << "\")\n";
-    } else if(strcmp(extension, extensions.prefab) == 0) {
-      outPrefabFile << "BakedPrefab(" << fileName << ",\"" << filePath << "\")\n";
-    }
-  }
-
-  outTexturesFile.close();
-  outMeshFile.close();
-  outMaterialFile.close();
-  outPrefabFile.close();
 }
 
 bool convertImage(const fs::path& inputPath, ConverterState& converterState) {
@@ -830,41 +766,29 @@ void extractGltfNodes(tinygltf::Model& model, const fs::path& input, const fs::p
   std::vector<u64> meshNodes;
   for(int i = 0; i < model.nodes.size(); i++) {
     auto& node = model.nodes[i];
+    prefab.nodeNames[i] = node.name;
 
-    std::string nodeName = node.name;
+    mat4 nodeMatrix;
 
-    prefab.nodeNames[i] = nodeName;
+    mat4 flipY = mat4{ 1.0 };
+    flipY.val2d[1][1] = -1;
 
-    std::array<float, 16> matrix;
-
-    //node has a matrix
-    if(node.matrix.size() > 0) {
+    //node has a nodeMatrix
+    if(!node.matrix.empty()) {
       for(int n = 0; n < 16; n++) {
-        matrix[n] = (f32)node.matrix[n];
+        nodeMatrix.val[n] = (f32)node.matrix[n];
       }
-
-      //mat4 flip = mat4{ 1.0 };
-      //flip[1][1] = -1;
-
-      mat4 mat;
-
-      memcpy(&mat, &matrix, sizeof(mat4));
-
-      mat = mat;// * flip;
-
-      memcpy(matrix.data(), &mat, sizeof(mat4));
-    }
-      //separate transform
-    else {
+      //nodeMatrix = nodeMatrix * flipY;
+    } else { //separate transforms
       mat4 translation{1.f};
-      if(node.translation.size() > 0) {
+      if(!node.translation.empty()) {
         translation = translate_mat4(vec3{(f32)node.translation[0],
                                      (f32)node.translation[1],
                                      (f32)node.translation[2]});
       }
 
       mat4 rotation{1.f};
-      if(node.rotation.size() > 0) {
+      if(!node.rotation.empty()) {
         quaternion rot{(f32)node.rotation[3],
                       (f32)node.rotation[0],
                       (f32)node.rotation[1],
@@ -873,21 +797,18 @@ void extractGltfNodes(tinygltf::Model& model, const fs::path& input, const fs::p
       }
 
       mat4 scale{1.f};
-      if(node.scale.size() > 0) {
+      if(!node.scale.empty()) {
         scale = scale_mat4(vec3{(f32)node.scale[0],
                                      (f32)node.scale[1],
                                      (f32)node.scale[2]});
       }
-      //mat4 flip = mat4{ 1.0 };
-      //flip[1][1] = -1;
 
-      mat4 transformMatrix = (translation * rotation * scale);// * flip;
-
-      memcpy(matrix.data(), &transformMatrix, sizeof(mat4));
+      mat4 transformMatrix = (translation * rotation * scale);// * flipY;
+      memcpy(nodeMatrix.val, &transformMatrix, sizeof(mat4));
     }
 
     prefab.nodeMatrices[i] = (u32)prefab.matrices.size();
-    prefab.matrices.push_back(matrix);
+    prefab.matrices.push_back(nodeMatrix);
 
     if(node.mesh >= 0) {
       auto mesh = model.meshes[node.mesh];
@@ -1098,4 +1019,69 @@ void replace(std::string& str, const char* oldTokens, u32 oldTokensCount, char n
       }
     }
   }
+}
+
+void addEscapeSlashes(std::string& str) {
+  u32 originalStrLength = (u32)str.size();
+
+  std::vector<u32> escapeSlashIndices;
+  escapeSlashIndices.reserve(originalStrLength / 2);
+
+  u32 slashCount = 0;
+  for(u32 i = 0; i < originalStrLength; i++) {
+    char& c = str[i];
+    if(c == '\\') {
+      escapeSlashIndices.push_back(i);
+      slashCount++;
+    }
+  }
+
+  u32 newStrLength = originalStrLength + slashCount;
+  str.resize(newStrLength);
+
+  u32 newStrIter = newStrLength - 1;
+  u32 oldStrIter = originalStrLength - 1;
+  while(slashCount > 0) {
+    if(str[oldStrIter] == '\\') {
+      str[newStrIter--] = '\\';
+      slashCount--;
+    }
+    str[newStrIter--] = str[oldStrIter--];
+  }
+}
+
+void writeOutputData(const ConverterState& converterState) {
+  if(!fs::is_directory(converterState.outputFileDir)) {
+    fs::create_directory(converterState.outputFileDir);
+  }
+
+  std::ofstream outTexturesFile, outMeshFile, outMaterialFile, outPrefabFile;
+  outTexturesFile.open((converterState.outputFileDir / "baked_textures.incl").string(), std::ios::out);
+  outMeshFile.open((converterState.outputFileDir / "baked_meshes.incl").string(), std::ios::out);
+  outMaterialFile.open((converterState.outputFileDir / "baked_materials.incl").string(), std::ios::out);
+  outPrefabFile.open((converterState.outputFileDir / "baked_prefabs.incl").string(), std::ios::out);
+
+  for(const fs::path& path: converterState.bakedFilePaths) {
+    std::string extensionStr = path.extension().string();
+    const char* extension = extensionStr.c_str();
+    std::string fileName = path.filename().replace_extension("").string();
+    const char tokensToReplace[] = {'.', '-'};
+    replace(fileName, tokensToReplace, ArrayCount(tokensToReplace), '_');
+    std::string filePath = path.string();
+    addEscapeSlashes(filePath);
+    if(strcmp(extension, extensions.texture) == 0) {
+      outTexturesFile << "BakedTexture(" << fileName << ",\"" << filePath << "\")\n";
+    } else if(strcmp(extension, extensions.material) == 0) {
+      outMaterialFile << "BakedMaterial(" << fileName << ",\"" << filePath << "\")\n";
+    } else if(strcmp(extension, extensions.mesh) == 0) {
+      outMeshFile << "BakedMesh(" << fileName << ",\"" << filePath << "\")\n";
+    } else if(strcmp(extension, extensions.prefab) == 0) {
+      outPrefabFile << "BakedPrefab(" << fileName << ",\"" << filePath << "\")\n";
+    }
+  }
+
+  outTexturesFile.close();
+  outMeshFile.close();
+  outMaterialFile.close();
+  outPrefabFile.close();
 }

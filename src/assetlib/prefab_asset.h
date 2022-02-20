@@ -21,7 +21,7 @@ namespace assets {
 		};
 		std::unordered_map<u64, NodeMesh> nodeMeshes;
 
-		std::vector<mat4> matrices;
+		std::vector<noop::mat4> matrices;
 	};
 
 	PrefabInfo readPrefabInfo(AssetFile* file);

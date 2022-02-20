@@ -32,6 +32,7 @@
 #include "types.h"
 #include "vk_types.h"
 #include "noop_math/noop_math.h"
+using namespace noop;
 #include "util.h"
 #include "cstring_ring_buffer.h"
 #include "camera.h"
@@ -60,5 +61,5 @@
 #include "vk_mesh.cpp"
 #include "vk_pipeline_builder.cpp"
 #include "imgui_util.cpp"
-#include "material.cpp"
+#include "materials.cpp"
 #include "vk_engine.cpp"
