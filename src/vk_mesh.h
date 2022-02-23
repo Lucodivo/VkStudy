@@ -23,10 +23,11 @@ struct RenderBounds {
 
 struct Mesh {
   std::vector<Vertex> vertices;
+  std::vector<u32> indices;
   AllocatedBuffer vertexBuffer;
-  // TODO: Index buffer
+  AllocatedBuffer indexBuffer;
   RenderBounds bounds;
 
   bool loadFromAsset(const char* fileName);
-  AllocatedBuffer uploadMesh(VmaAllocator vmaAllocator);
+  void uploadMesh(VmaAllocator vmaAllocator, UploadContext& uploadContext);
 };

@@ -178,7 +178,6 @@ private:
 
   void loadImages();
   void loadMeshes();
-  void uploadMesh(Mesh& mesh);
   Mesh* getMesh(const std::string& name); //returns nullptr if it can't be found
 
   Material* createMaterial(VkPipeline pipeline, VkPipelineLayout layout, const char* name); //create material and add it to the map

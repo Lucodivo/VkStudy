@@ -53,8 +53,9 @@ bool Mesh::loadFromAsset(const char* fileName) {
   std::vector<char> tmpVertexBuffer;
   tmpVertexBuffer.resize(meshInfo.vertexBufferSize);
 
-  // TODO: index buffer
-  assets::unpackMesh(meshInfo, assetFile.binaryBlob.data(), assetFile.binaryBlob.size(), tmpVertexBuffer.data(), nullptr);
+  indices.resize(meshInfo.indexBufferSize / sizeof(u32));
+
+  assets::unpackMesh(meshInfo, assetFile.binaryBlob.data(), assetFile.binaryBlob.size(), tmpVertexBuffer.data(), (char*)indices.data());
 
   bounds.extents.x = meshInfo.bounds.extents[0];
   bounds.extents.y = meshInfo.bounds.extents[1];
@@ -137,29 +138,73 @@ bool Mesh::loadFromAsset(const char* fileName) {
   return false;
 }
 
-AllocatedBuffer Mesh::uploadMesh(VmaAllocator allocator) {
-  //allocate vertex buffer
-  VkBufferCreateInfo bufferInfo = {};
-  bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-  bufferInfo.size = vertices.size() * sizeof(Vertex);
-  bufferInfo.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+void Mesh::uploadMesh(VmaAllocator vmaAllocator, UploadContext& uploadContext) {
+  u64 vertexBufferSize = vertices.size() * sizeof(Vertex);
+  u64 indexBufferSize = indices.size() * sizeof(u32);
 
-  //let the VMA library know that this data should be writeable by CPU, but also readable by GPU
+  // vertex buffer
+  VkBufferCreateInfo stagingBufferCreateInfo = {};
+  stagingBufferCreateInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+  stagingBufferCreateInfo.pNext = NULL;
+  stagingBufferCreateInfo.size = vertexBufferSize + indexBufferSize;
+  stagingBufferCreateInfo.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+
   VmaAllocationCreateInfo vmaAllocInfo = {};
-  vmaAllocInfo.usage = VMA_MEMORY_USAGE_CPU_TO_GPU;
+  vmaAllocInfo.usage = VMA_MEMORY_USAGE_CPU_ONLY; // TODO: VMA_MEMORY_USAGE_CPU_TO_GPU
 
-  VK_CHECK(vmaCreateBuffer(allocator,
-                           &bufferInfo,
+  AllocatedBuffer stagingBuffer;
+  VK_CHECK(vmaCreateBuffer(vmaAllocator,
+                           &stagingBufferCreateInfo,
                            &vmaAllocInfo,
+                           &stagingBuffer.vkBuffer,
+                           &stagingBuffer.vmaAllocation,
+                           nullptr));
+
+  {
+    char* data;
+    vmaMapMemory(vmaAllocator, stagingBuffer.vmaAllocation, (void**)(&data));
+      memcpy(data, vertices.data(), vertexBufferSize);
+      memcpy(data + vertexBufferSize, indices.data(), indexBufferSize);
+    vmaUnmapMemory(vmaAllocator, stagingBuffer.vmaAllocation);
+  }
+
+  VkBufferCreateInfo vertexBufferCreateInfo = {};
+  vertexBufferCreateInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+  vertexBufferCreateInfo.pNext = nullptr;
+  vertexBufferCreateInfo.size = vertexBufferSize;
+  vertexBufferCreateInfo.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+
+  VkBufferCreateInfo indexBufferCreateInfo = vertexBufferCreateInfo;
+  indexBufferCreateInfo.size = indexBufferSize;
+  indexBufferCreateInfo.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
+
+  VmaAllocationCreateInfo vmaStagingAllocInfo = {};
+  vmaStagingAllocInfo.usage = VMA_MEMORY_USAGE_GPU_ONLY;
+
+  VK_CHECK(vmaCreateBuffer(vmaAllocator, &vertexBufferCreateInfo, &vmaStagingAllocInfo,
                            &vertexBuffer.vkBuffer,
                            &vertexBuffer.vmaAllocation,
                            nullptr));
 
-  void* data;
-  vmaMapMemory(allocator, vertexBuffer.vmaAllocation, &data);
-  // TODO: Consider using assets::unpackMesh directly to the vertexBuffer?
-  memcpy(data, vertices.data(), vertices.size() * sizeof(Vertex));
-  vmaUnmapMemory(allocator, vertexBuffer.vmaAllocation);
+  VK_CHECK(vmaCreateBuffer(vmaAllocator, &indexBufferCreateInfo, &vmaStagingAllocInfo,
+                           &indexBuffer.vkBuffer,
+                           &indexBuffer.vmaAllocation,
+                           nullptr));
 
-  return vertexBuffer;
+  vkutil::immediateSubmit(uploadContext, [=](VkCommandBuffer cmd) -> void {
+    VkBufferCopy vertexCopy;
+    vertexCopy.dstOffset = 0;
+    vertexCopy.srcOffset = 0;
+    vertexCopy.size = vertexBufferSize;
+
+    VkBufferCopy indexCopy;
+    indexCopy.dstOffset = 0;
+    indexCopy.srcOffset = vertexBufferSize;
+    indexCopy.size = indexBufferSize;
+
+    vkCmdCopyBuffer(cmd, stagingBuffer.vkBuffer, vertexBuffer.vkBuffer, 1, &vertexCopy);
+    vkCmdCopyBuffer(cmd, stagingBuffer.vkBuffer, indexBuffer.vkBuffer, 1, &indexCopy);
+  });
+
+  vmaDestroyBuffer(vmaAllocator, stagingBuffer.vkBuffer, stagingBuffer.vmaAllocation);
 }

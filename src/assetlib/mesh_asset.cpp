@@ -32,10 +32,8 @@ void assets::readMeshInfo(const AssetFile& assetFile, MeshInfo* meshInfo)
 	nlohmann::json meshJson = nlohmann::json::parse(assetFile.json);
 
 	meshInfo->vertexBufferSize = meshJson[jsonKeys.vertexBufferSize];
-
-  // TODO: Indices
-  //meshInfo->indexBufferSize = meshJson[jsonKeys.indexBufferSize];
-	//meshInfo->indexSize = static_cast<u8>(meshJson[jsonKeys.indexSize]);
+	meshInfo->indexBufferSize = meshJson[jsonKeys.indexBufferSize];
+	meshInfo->indexSize = static_cast<u8>(meshJson[jsonKeys.indexSize]);
 
 	meshInfo->originalFile = meshJson[jsonKeys.originalFile];
 
@@ -65,16 +63,16 @@ void assets::readMeshInfo(const AssetFile& assetFile, MeshInfo* meshInfo)
 void assets::unpackMesh(const MeshInfo& info, const char* srcBuffer, size_t sourceSize, char* dstVertexBuffer, char* dstIndexBuffer)
 {
 	std::vector<char> decompressedBuffer;
-  const u64 decompressedBufferSize = info.vertexBufferSize;// + info->indexBufferSize;
+  const u64 decompressedBufferSize = info.vertexBufferSize + info.indexBufferSize;
 	decompressedBuffer.resize(decompressedBufferSize);
 
 	LZ4_decompress_safe(srcBuffer, decompressedBuffer.data(), (s32)sourceSize, (s32)decompressedBufferSize);
 
 	//copy vertex buffer
-	memcpy(dstVertexBuffer, decompressedBuffer.data(), decompressedBufferSize);
+	memcpy(dstVertexBuffer, decompressedBuffer.data(), info.vertexBufferSize);
 
 	//copy index buffer
-	//memcpy(dstIndexBuffer, decompressedBuffer.data() + info.vertexBufferSize, info.indexBufferSize);
+	memcpy(dstIndexBuffer, decompressedBuffer.data() + info.vertexBufferSize, info.indexBufferSize);
 }
 
 assets::AssetFile assets::packMesh(const MeshInfo& meshInfo, char* vertexData, char* indexData)
@@ -87,8 +85,8 @@ assets::AssetFile assets::packMesh(const MeshInfo& meshInfo, char* vertexData, c
   meshJson[jsonKeys.vertexFormat] = vertexFormatToString(meshInfo.vertexFormat);
   meshJson[jsonKeys.vertexFormatEnumVal] = vertexFormatToEnumVal(meshInfo.vertexFormat);
   meshJson[jsonKeys.vertexBufferSize] = meshInfo.vertexBufferSize;
-  //meshJson[jsonKeys.indexBufferSize] = meshInfo.indexBufferSize;
-  //meshJson[jsonKeys.indexSize] = meshInfo.indexSize;
+  meshJson[jsonKeys.indexBufferSize] = meshInfo.indexBufferSize;
+  meshJson[jsonKeys.indexSize] = meshInfo.indexSize;
   meshJson[jsonKeys.originalFile] = meshInfo.originalFile;
 
 	std::vector<float> boundsData;
@@ -106,7 +104,7 @@ assets::AssetFile assets::packMesh(const MeshInfo& meshInfo, char* vertexData, c
 
   meshJson[jsonKeys.bounds] = boundsData;
 
-	size_t fullSize = meshInfo.vertexBufferSize;// + meshInfo.indexBufferSize;
+	size_t fullSize = meshInfo.vertexBufferSize + meshInfo.indexBufferSize;
 
 	std::vector<char> mergedBuffer;
 	mergedBuffer.resize(fullSize);
@@ -115,7 +113,7 @@ assets::AssetFile assets::packMesh(const MeshInfo& meshInfo, char* vertexData, c
 	memcpy(mergedBuffer.data(), vertexData, meshInfo.vertexBufferSize);
 
 	//copy index buffer
-	//memcpy(mergedBuffer.data() + meshInfo.vertexBufferSize, indexData, meshInfo.indexBufferSize);
+	memcpy(mergedBuffer.data() + meshInfo.vertexBufferSize, indexData, meshInfo.indexBufferSize);
 
 	//compress buffer and copy it into the file struct
 	size_t worstCaseCompressionSize = LZ4_compressBound(static_cast<int>(fullSize));

@@ -2,6 +2,7 @@
 #include <json.hpp>
 #include <fstream>
 #include <filesystem>
+#include <unordered_set>
 
 namespace fs = std::filesystem;
 
@@ -48,13 +49,13 @@ void unpackGltfBuffer(tinygltf::Model& model, tinygltf::Accessor& accessor, std:
 void extractGltfVertices(tinygltf::Primitive& primitive, tinygltf::Model& model, std::vector<assets::Vertex_PNCV_f32>& _vertices);
 void extractGltfIndices(tinygltf::Primitive& primitive, tinygltf::Model& model, std::vector<u32>& _primIndices);
 bool extractGltfMeshes(tinygltf::Model& gltfModel, const std::string& filePath, const fs::path& outputFolder, ConverterState& converterState);
-bool extractGltfMesh(tinygltf::Model& gltfModel, const fs::path& filePath, const fs::path& outputFolder, ConverterState& converterState); // combines all meshes into a single large mesh
+bool extractGltfCombinedMesh(tinygltf::Model& gltfModel, const fs::path& filePath, const fs::path& outputFolder, ConverterState& converterState); // combines all meshes into a single large mesh
 void extractGltfMaterials(tinygltf::Model& model, const fs::path& input, const fs::path& outputFolder, ConverterState& converterState);
 void extractGltfNodes(tinygltf::Model& model, const fs::path& input, const fs::path& outputFolder, ConverterState& converterState);
 std::string calculateGltfMaterialName(tinygltf::Model& model, int materialIndex);
 std::string calculateGltfMeshName(tinygltf::Model& model, int meshIndex, int primitiveIndex);
 
-bool extractObjMesh(tinyobj::ObjReader& objReader, const fs::path& filePath, const fs::path& outputFolder, ConverterState& converterState);
+bool extractObjCombinedMesh(tinyobj::ObjReader& objReader, const fs::path& filePath, const fs::path& outputFolder, ConverterState& converterState);
 
 void writeOutputData(const ConverterState& converterState);
 void replace(std::string& str, const char* oldTokens, u32 oldTokensCount, char newToken);
@@ -127,7 +128,7 @@ int main(int argc, char* argv[]) {
       fs::path outputFolder = converterState.bakedAssetDir / (filePath.stem().string() + "_OBJ");
       fs::create_directory(outputFolder);
 
-      extractObjMesh(reader, filePath, outputFolder, converterState);
+      extractObjCombinedMesh(reader, filePath, outputFolder, converterState);
     }
 
     if(fileExt == ".gltf" || fileExt == ".glb") {
@@ -159,7 +160,7 @@ int main(int argc, char* argv[]) {
         fs::path outputFolder = converterState.bakedAssetDir / (p.path().stem().string() + "_GLTF");
         fs::create_directory(outputFolder);
 
-        extractGltfMesh(model, filePath, outputFolder, converterState);
+        extractGltfCombinedMesh(model, filePath, outputFolder, converterState);
         extractGltfMaterials(model, filePath, outputFolder, converterState);
 //        extractGltfMeshes(model, pathStr, outputFolder, converterState);
 //        extractGltfNodes(model, filePath, outputFolder, converterState);
@@ -483,7 +484,7 @@ std::string calculateGltfMeshName(tinygltf::Model& model, int meshIndex, int pri
   return meshname;
 }
 
-bool extractGltfMesh(tinygltf::Model& gltfModel, const fs::path& filePath, const fs::path& outputFolder, ConverterState& converterState) {
+bool extractGltfCombinedMesh(tinygltf::Model& gltfModel, const fs::path& filePath, const fs::path& outputFolder, ConverterState& converterState) {
 
   using Vertex = assets::Vertex_PNCV_f32;
   VertexFormat vertexFormat = assets::VertexFormat::PNCV_F32;
@@ -516,18 +517,18 @@ bool extractGltfMesh(tinygltf::Model& gltfModel, const fs::path& filePath, const
   const u32 texture0AttributeIndex = 2;
 
   std::vector<Vertex> vertices;
-  //std::vector<u32> indices; // TODO: indices
+  std::vector<u32> indices; // TODO: indices
 
   u64 meshCount = gltfModel.meshes.size();
   Assert(meshCount > 0);
   std::vector<tinygltf::Accessor>* gltfAccessors = &gltfModel.accessors;
   std::vector<tinygltf::BufferView>* gltfBufferViews = &gltfModel.bufferViews;
-  for(u32 i = 0; i < meshCount; i++) {
-    tinygltf::Mesh& gltfMesh = gltfModel.meshes[i];
+  for(u32 gltfMeshIndex = 0; gltfMeshIndex < meshCount; gltfMeshIndex++) {
+    tinygltf::Mesh& gltfMesh = gltfModel.meshes[gltfMeshIndex];
     u64 primitiveCount = gltfMesh.primitives.size();
     Assert(primitiveCount > 0);
-    for(u32 j = 0; j < primitiveCount; j++) {
-      tinygltf::Primitive& gltfPrimitive = gltfMesh.primitives[j];
+    for(u32 gltfPrimitiveIndex = 0; gltfPrimitiveIndex < primitiveCount; gltfPrimitiveIndex++) {
+      tinygltf::Primitive& gltfPrimitive = gltfMesh.primitives[gltfPrimitiveIndex];
       Assert(gltfPrimitive.indices > -1);
 
       // indices data
@@ -571,8 +572,8 @@ bool extractGltfMesh(tinygltf::Model& gltfModel, const fs::path& filePath, const
 
       u64 indexCount = indicesGLTFBufferByteLength / sizeof(u16);
       u64 vertexCount = positionAttribute.bufferByteLength / positionAttribute.numComponents / sizeof(f32);
-      for(u32 i = 0; i < indexCount; i++) {
-        u16 vertIndex = indicesDataOffset[i];
+      for(u32 gltfVertexIndex = 0; gltfVertexIndex < indexCount; gltfVertexIndex++) {
+        u16 vertIndex = indicesDataOffset[gltfVertexIndex];
 
         Vertex newVert{};
 
@@ -593,8 +594,8 @@ bool extractGltfMesh(tinygltf::Model& gltfModel, const fs::path& filePath, const
 
         // vertex uv
         if(texture0AttributesAvailable) {
-          newVert.uv[0] = texture0AttributeData[3 * vertIndex + 0];
-          newVert.uv[1] = 1.0f - texture0AttributeData[3 * vertIndex + 1]; // TODO: is inverse uv y coord necessary?
+          newVert.uv[0] = texture0AttributeData[2 * vertIndex + 0];
+          newVert.uv[1] = 1.0f - texture0AttributeData[2 * vertIndex + 1]; // TODO: is inverse uv y coord necessary?
         } else {
           newVert.uv[0] = 0.5f;
           newVert.uv[1] = 0.5f;
@@ -608,12 +609,12 @@ bool extractGltfMesh(tinygltf::Model& gltfModel, const fs::path& filePath, const
   MeshInfo meshInfo;
   meshInfo.vertexFormat = vertexFormat;
   meshInfo.vertexBufferSize = vertices.size() * sizeof(Vertex);
-  //meshInfo.indexBufferSize = indices.size() * sizeof(u32);
-  //meshInfo.indexSize = sizeof(u32);
+  meshInfo.indexBufferSize = indices.size() * sizeof(u32);
+  meshInfo.indexSize = sizeof(u32);
   meshInfo.originalFile = filePath.string();
   meshInfo.bounds = assets::calculateBounds(vertices.data(), vertices.size());
 
-  assets::AssetFile newFile = assets::packMesh(meshInfo, (char*)vertices.data(), nullptr); //(char*)indices.data());
+  assets::AssetFile newFile = assets::packMesh(meshInfo, (char*)vertices.data(), (char*)indices.data());
 
   std::string newFileName = filePath.filename().replace_extension(extensions.mesh).string();
   fs::path meshPath = outputFolder / newFileName;
@@ -918,73 +919,156 @@ void extractGltfNodes(tinygltf::Model& model, const fs::path& input, const fs::p
   converterState.bakedFilePaths.push_back(sceneFilePath);
 }
 
-bool extractObjMesh(tinyobj::ObjReader& objReader, const fs::path& filePath, const fs::path& outputFolder, ConverterState& converterState) {
+bool extractObjCombinedMesh(tinyobj::ObjReader& objReader, const fs::path& filePath, const fs::path& outputFolder, ConverterState& converterState) {
   using Vertex = assets::Vertex_PNCV_f32;
   VertexFormat vertexFormat = assets::VertexFormat::PNCV_F32;
 
   //attrib will contain the vertex arrays of the file
   tinyobj::attrib_t attrib = objReader.GetAttrib();
+  bool vertexColorsAvailable = !attrib.colors.empty();
+  bool vertexNormalsAvailable = !attrib.normals.empty();
+  bool vertexUVsAvailable = !attrib.texcoords.empty();
   //shapes contains the info for each separate object in the file
   std::vector<tinyobj::shape_t> shapes = objReader.GetShapes();
   //materials contains the information about the material of each shape, but we won't use it.
   std::vector<tinyobj::material_t> materials = objReader.GetMaterials();
 
+  u32 vertexCount = attrib.vertices.size() / 3;
+
   std::vector<Vertex> vertices;
-  vertices.reserve(shapes.size() * 3);
+  vertices.reserve(vertexCount * 2); // guesstimate
 
-  for(u32 s = 0; s < shapes.size(); s++) {
-    // Loop over faces(polygon)
-    u32 index_offset = 0;
-    for(u64 f = 0; f < shapes[s].mesh.num_face_vertices.size(); f++) {
-      //hardcode loading to triangles
-      const u32 verticesPerTriangle = 3;
+  std::vector<u32> indices;
+  indices.reserve(vertexCount * 2); // guesstimate
+
+  struct IndexValue {
+    u32 vertexIndex; // index in vertex vector that will be written to asset file
+    s32 tinyobj_normalIndex;
+    s32 tinyobj_texCoordIndex;
+  };
+  std::unordered_map<s32 /*tinyobj_vertexIndex*/, IndexValue> previousIndexValues;
+  u32 indexReferencedVerticesCount = 0;
+
+  u64 expectedIndexCount = 0;
+
+  for(u64 shapeIndex = 0; shapeIndex < shapes.size(); shapeIndex++) {
+    const tinyobj::shape_t& shape = shapes[shapeIndex];
+    Assert(shape.lines.indices.size() == 0); // Assert no lines
+    Assert(shape.points.indices.size() == 0); // Assert no points
+    const tinyobj::mesh_t& mesh = shape.mesh;
+    u64 meshFaceCount = mesh.num_face_vertices.size();
+    size_t meshIndexOffset = 0;
+
+    expectedIndexCount += mesh.indices.size();
+
+    for(u64 faceIndex = 0; faceIndex < meshFaceCount; faceIndex++) {
+      u8 faceVertexCount = mesh.num_face_vertices[faceIndex];
+      Assert(faceVertexCount == 3); // NOTE: Currently an error if dealing with non-triangles
+
       // Loop over vertices in the face.
-      for(u32 v = 0; v < verticesPerTriangle; v++) {
+      for(u32 faceVertIndex = 0; faceVertIndex < faceVertexCount; faceVertIndex++) {
         // access to vertex
-        tinyobj::index_t idx = shapes[s].mesh.indices[index_offset + v];
+        tinyobj::index_t index = mesh.indices[meshIndexOffset + faceVertIndex];
+        s32 tinyobj_vertexIndex = index.vertex_index;
+        s32 tinyobj_normalIndex = index.normal_index;
+        s32 tinyobj_texCoordIndex = index.texcoord_index;
+        Assert(tinyobj_vertexIndex < vertexCount);
+        Assert(tinyobj_vertexIndex >= 0);
 
-        Vertex newVert;
+        auto prevIndexValue = previousIndexValues.find(tinyobj_vertexIndex);
+        bool tinyobjVertexUsedBefore = prevIndexValue != previousIndexValues.end();
+        if(!tinyobjVertexUsedBefore) { indexReferencedVerticesCount++; }
+        bool matchingIndex = tinyobjVertexUsedBefore &&
+                             prevIndexValue->second.tinyobj_normalIndex == tinyobj_normalIndex &&
+                             prevIndexValue->second.tinyobj_texCoordIndex == tinyobj_texCoordIndex;
+        if(matchingIndex) {
+          indices.push_back(prevIndexValue->second.vertexIndex);
+        } else {// new vertex
 
-        //vertex position
-        newVert.position[0] = attrib.vertices[(3 * idx.vertex_index) + 0];
-        newVert.position[1] = attrib.vertices[(3 * idx.vertex_index) + 1];
-        newVert.position[2] = attrib.vertices[(3 * idx.vertex_index) + 2];
+          Vertex newVert;
 
-        //vertex normal
-        newVert.normal[0] = attrib.normals[(3 * idx.normal_index) + 0];
-        newVert.normal[1] = attrib.normals[(3 * idx.normal_index) + 1];
-        newVert.normal[2] = attrib.normals[(3 * idx.normal_index) + 2];
+          //vertex position
+          u32 vertexAttributeStartIndex = 3 * index.vertex_index;
+          newVert.position[0] = attrib.vertices[vertexAttributeStartIndex + 0];
+          newVert.position[1] = attrib.vertices[vertexAttributeStartIndex + 1];
+          newVert.position[2] = attrib.vertices[vertexAttributeStartIndex + 2];
 
-        // Optional: vertex colors
-        if(!attrib.colors.empty()) {
-          newVert.color[0] = attrib.colors[(3 * idx.vertex_index) + 0];
-          newVert.color[1] = attrib.colors[(3 * idx.vertex_index) + 1];
-          newVert.color[2] = attrib.colors[(3 * idx.vertex_index) + 2];
-        } else {
-          newVert.color[0] = newVert.normal[0];
-          newVert.color[1] = newVert.normal[1];
-          newVert.color[2] = newVert.normal[2];
+          //vertex normal
+          if(vertexNormalsAvailable) {
+            u32 normalAttributeStartIndex = 3 * index.normal_index;
+            newVert.normal[0] = attrib.normals[normalAttributeStartIndex + 0];
+            newVert.normal[1] = attrib.normals[normalAttributeStartIndex + 1];
+            newVert.normal[2] = attrib.normals[normalAttributeStartIndex + 2];
+          } else {
+            // TODO: calculate normals
+            // NOTE: reference
+            // tinyobjloader/tinyobjloader/blob/master/examples/viewer/viewer.cc : computeSmoothingNormals()
+            printf("OBJ file %s is missing normals", filePath.filename().string().c_str());
+          }
+
+          // Optional: vertex colors
+          if(vertexColorsAvailable) {
+            u32 colorAttributeStartIndex = vertexAttributeStartIndex;
+            newVert.color[0] = attrib.colors[colorAttributeStartIndex + 0];
+            newVert.color[1] = attrib.colors[colorAttributeStartIndex + 1];
+            newVert.color[2] = attrib.colors[colorAttributeStartIndex + 2];
+          } else { // set vertex colors to normals
+            newVert.color[0] = newVert.normal[0];
+            newVert.color[1] = newVert.normal[1];
+            newVert.color[2] = newVert.normal[2];
+          }
+
+          //vertex uv
+          if(vertexUVsAvailable) {
+            u32 texCoordAttributeStartIndex = 2 * index.texcoord_index;
+            newVert.uv[0] = attrib.texcoords[texCoordAttributeStartIndex + 0];
+            newVert.uv[1] = 1.0f - attrib.texcoords[texCoordAttributeStartIndex + 1]; // TODO: Is inverting uv y coordinate correct?
+          } else {
+            newVert.uv[0] = 0.5f;
+            newVert.uv[1] = 0.5f;
+          }
+
+          vertices.push_back(newVert);
+          u32 newVertIndex = vertices.size() - 1;
+          indices.push_back(newVertIndex);
+
+          IndexValue indexValue;
+          indexValue.vertexIndex = newVertIndex;
+          indexValue.tinyobj_normalIndex = tinyobj_normalIndex;
+          indexValue.tinyobj_texCoordIndex = tinyobj_texCoordIndex;
+          previousIndexValues[tinyobj_vertexIndex] = indexValue;
         }
-
-        //vertex uv
-        newVert.uv[0] = attrib.texcoords[2 * idx.texcoord_index + 0];
-        newVert.uv[1] = 1 - attrib.texcoords[2 * idx.texcoord_index + 1]; // TODO: Is inverting uv y coordinate correct?
-
-        vertices.push_back(newVert);
       }
-      index_offset += verticesPerTriangle;
+      meshIndexOffset += faceVertexCount;
     }
+  }
+
+  // TODO: Why do some OBJs (lost_empire & BB8) have unreferenced vertices?
+  if(indexReferencedVerticesCount != vertexCount || expectedIndexCount != indices.size()) {
+    Assert(indexReferencedVerticesCount <= vertexCount);
+    Assert(indices.size() <= expectedIndexCount);
+    u32 unreferencedVertexCount = (u32)(vertexCount - indexReferencedVerticesCount);
+    u32 missingIndexCount = (u32)(expectedIndexCount - indices.size());
+    printf("Warning: OBJ file \"%s\" contains %u vertices with no matching indices and is missing %u indices\n", filePath.filename().string().c_str(), unreferencedVertexCount, missingIndexCount);
+    // debug help if it becomes a problem
+//    std::vector<u32> unreferencedVertices;
+//    unreferencedVertices.reserve(vertexCount - indexReferencedVerticesCount);
+//    for(u32 i = 0; i < vertexCount; i++) {
+//      if(vertexIndexCounts[i] == 0) {
+//        unreferencedVertices.push_back(i);
+//      }
+//    }
   }
 
   MeshInfo meshInfo;
   meshInfo.vertexFormat = vertexFormat;
   meshInfo.vertexBufferSize = vertices.size() * sizeof(Vertex);
-  //meshInfo.indexBufferSize = indices.size() * sizeof(u32);
-  //meshInfo.indexSize = sizeof(u32);
+  meshInfo.indexBufferSize = indices.size() * sizeof(u32);
+  meshInfo.indexSize = sizeof(u32);
   meshInfo.originalFile = filePath.string();
   meshInfo.bounds = assets::calculateBounds(vertices.data(), vertices.size());
 
-  assets::AssetFile newFile = assets::packMesh(meshInfo, (char*)vertices.data(), nullptr); //(char*)indices.data());
+  assets::AssetFile newFile = assets::packMesh(meshInfo, (char*)vertices.data(), (char*)indices.data());
 
   std::string newFileName = filePath.filename().replace_extension(extensions.mesh).string();
   fs::path meshPath = outputFolder / newFileName;

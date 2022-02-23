@@ -901,55 +901,55 @@ void VulkanEngine::initScene() {
   };
 
   // Renderables //
-  // Mr. Saturn
-	RenderObject mrSaturnObject;
-  mrSaturnObject.mesh = getMesh(bakedMeshAssetData.mr_saturn.name);
-  mrSaturnObject.materialName = materialDefaultLit.name;
-  mrSaturnObject.material = getMaterial(mrSaturnObject.materialName);
-	f32 mrSaturnScale = 20.0f;
-	mat4 mrSaturnScaleMat = scale_mat4(vec3{mrSaturnScale, mrSaturnScale, mrSaturnScale});
-	mat4 mrSaturnTranslationMat = translate_mat4(vec3{0.0f, 0.0f, -mrSaturnScale * 2.0f});
-	mat4 mrSaturnTransform = mrSaturnTranslationMat * mrSaturnScaleMat;
-  mrSaturnObject.modelMatrix = mrSaturnTransform;
-  mrSaturnObject.defaultColor = vec4{155.0f / 255.0f, 115.0f / 255.0f, 96.0f / 255.0f, 1.0f};
-  attachTexture(blockySampler, bakedTextureAssetData.single_white_pixel.name, &mrSaturnObject.textureSet);
-	renderables.push_back(mrSaturnObject);
-
-  // Cubes //
-	RenderObject cubeObject;
-  cubeObject.mesh = getMesh(bakedMeshAssetData.cube.name);
-  cubeObject.materialName = materialDefaulColor.name;
-  cubeObject.material = getMaterial(cubeObject.materialName);
-  attachTexture(blockySampler, bakedTextureAssetData.single_white_pixel.name, &cubeObject.textureSet);
-	f32 envScale = 0.2f;
-	mat4 envScaleMat = scale_mat4(vec3{envScale, envScale, envScale});
-	for (s32 x = -16; x <= 16; ++x)
-	for (s32 y = -16; y <= 16; ++y)
-	for (s32 z = 0; z <= 32; ++z) {
-		vec3 pos{ (f32)x, (f32)y, (f32)z };
-		vec3 color = (pos + vec3{16.0f, 16.0f, 0.0f}) / vec3{32.0f, 32.0f, 32.0f};
-		mat4 translationMat = translate_mat4(pos);
-    cubeObject.modelMatrix = translationMat * envScaleMat;
-    cubeObject.defaultColor = vec4{color.r, color.g, color.b, 1.0f}; // TODO: lookup how glm accomplishes vec4{vec3, f32} construction
-		renderables.push_back(cubeObject);
-	}
+//  // Mr. Saturn
+//	RenderObject mrSaturnObject;
+//  mrSaturnObject.mesh = getMesh(bakedMeshAssetData.mr_saturn.name);
+//  mrSaturnObject.materialName = materialDefaultLit.name;
+//  mrSaturnObject.material = getMaterial(mrSaturnObject.materialName);
+//	f32 mrSaturnScale = 20.0f;
+//	mat4 mrSaturnScaleMat = scale_mat4(vec3{mrSaturnScale, mrSaturnScale, mrSaturnScale});
+//	mat4 mrSaturnTranslationMat = translate_mat4(vec3{0.0f, 0.0f, -mrSaturnScale * 2.0f});
+//	mat4 mrSaturnTransform = mrSaturnTranslationMat * mrSaturnScaleMat;
+//  mrSaturnObject.modelMatrix = mrSaturnTransform;
+//  mrSaturnObject.defaultColor = vec4{155.0f / 255.0f, 115.0f / 255.0f, 96.0f / 255.0f, 1.0f};
+//  attachTexture(blockySampler, bakedTextureAssetData.single_white_pixel.name, &mrSaturnObject.textureSet);
+//	renderables.push_back(mrSaturnObject);
+//
+//  // Cubes //
+//	RenderObject cubeObject;
+//  cubeObject.mesh = getMesh(bakedMeshAssetData.cube.name);
+//  cubeObject.materialName = materialDefaulColor.name;
+//  cubeObject.material = getMaterial(cubeObject.materialName);
+//  attachTexture(blockySampler, bakedTextureAssetData.single_white_pixel.name, &cubeObject.textureSet);
+//	f32 envScale = 0.2f;
+//	mat4 envScaleMat = scale_mat4(vec3{envScale, envScale, envScale});
+//	for (s32 x = -16; x <= 16; ++x)
+//	for (s32 y = -16; y <= 16; ++y)
+//	for (s32 z = 0; z <= 32; ++z) {
+//		vec3 pos{ (f32)x, (f32)y, (f32)z };
+//		vec3 color = (pos + vec3{16.0f, 16.0f, 0.0f}) / vec3{32.0f, 32.0f, 32.0f};
+//		mat4 translationMat = translate_mat4(pos);
+//    cubeObject.modelMatrix = translationMat * envScaleMat;
+//    cubeObject.defaultColor = vec4{color.r, color.g, color.b, 1.0f}; // TODO: lookup how glm accomplishes vec4{vec3, f32} construction
+//		renderables.push_back(cubeObject);
+//	}
 
   // Minecraft World
-//  RenderObject minecraftObject;
-//  minecraftObject.mesh = getMesh(bakedMeshAssetData.lost_empire.name);
-//  minecraftObject.materialName = materialTextured.name;
-//  minecraftObject.material = getMaterial(minecraftObject.materialName);
-//  minecraftObject.defaultColor = vec4{50.0f, 0.0f, 0.0f, 1.0f};
-//  attachTexture(blockySampler, bakedTextureAssetData.lost_empire_RGBA.name, &minecraftObject.textureSet);
-//
-//  f32 minecraftScale = 1.0f;
-//  mat4 minecraftScaleMat = scale_mat4(vec3{minecraftScale, minecraftScale, minecraftScale});
-//  mat4 minecraftRotationMat = rotate_mat4(RadiansPerDegree * 90.0f, vec3{1.0f, 0.0f, 0.0f});
-//  mat4 minecraftTranslationMat = translate_mat4(vec3{0.0f, 0.0f, 0.0f});
-//  mat4 minecraftTransform = minecraftTranslationMat * minecraftRotationMat * minecraftScaleMat;
-//  minecraftObject.modelMatrix = minecraftTransform;
-//
-//  renderables.push_back(minecraftObject);
+  RenderObject minecraftObject;
+  minecraftObject.mesh = getMesh(bakedMeshAssetData.lost_empire.name);
+  minecraftObject.materialName = materialTextured.name;
+  minecraftObject.material = getMaterial(minecraftObject.materialName);
+  minecraftObject.defaultColor = vec4{50.0f, 0.0f, 0.0f, 1.0f};
+  attachTexture(blockySampler, bakedTextureAssetData.lost_empire_RGBA.name, &minecraftObject.textureSet);
+
+  f32 minecraftScale = 1.0f;
+  mat4 minecraftScaleMat = scale_mat4(vec3{minecraftScale, minecraftScale, minecraftScale});
+  mat4 minecraftRotationMat = rotate_mat4(RadiansPerDegree * 90.0f, vec3{1.0f, 0.0f, 0.0f});
+  mat4 minecraftTranslationMat = translate_mat4(vec3{0.0f, 0.0f, 0.0f});
+  mat4 minecraftTransform = minecraftTranslationMat * minecraftRotationMat * minecraftScaleMat;
+  minecraftObject.modelMatrix = minecraftTransform;
+
+  renderables.push_back(minecraftObject);
 
   // TODO: sort objects by material to minimize binding pipelines
   //std::sort(renderables.begin(), renderables.end(), [](const RenderObject& a, const RenderObject& b) {
@@ -976,7 +976,7 @@ void VulkanEngine::loadMeshes() {
 
     Mesh mesh{};
     mesh.loadFromAsset(bakedMeshData.filePath);
-    mesh.uploadMesh(vmaAllocator);
+    mesh.uploadMesh(vmaAllocator, uploadContext);
     meshes[bakedMeshData.name] = mesh;
   }
 
@@ -986,59 +986,10 @@ void VulkanEngine::loadMeshes() {
       const BakedAssetData& bakedMeshData = bakedMeshes[i];
       const Mesh& mesh = meshes[bakedMeshData.name];
       vmaDestroyBuffer(vmaAllocator, mesh.vertexBuffer.vkBuffer, mesh.vertexBuffer.vmaAllocation);
+      vmaDestroyBuffer(vmaAllocator, mesh.indexBuffer.vkBuffer, mesh.indexBuffer.vmaAllocation);
       meshes.erase(bakedMeshData.name);
     }
   });
-}
-
-void VulkanEngine::uploadMesh(Mesh& mesh) {
-  const u64 bufferSize = mesh.vertices.size() * sizeof(Vertex);
-
-  VkBufferCreateInfo stagingBufferInfo = {};
-  stagingBufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-  stagingBufferInfo.pNext = nullptr;
-  stagingBufferInfo.size = bufferSize;
-  stagingBufferInfo.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT; // tells Vulkan this buffer is only used as a source for transfer commands
-
-  VmaAllocationCreateInfo vmaStagingAllocInfo = {};
-  vmaStagingAllocInfo.usage = VMA_MEMORY_USAGE_CPU_ONLY;
-
-  AllocatedBuffer stagingBuffer; // tmp buffer
-  VK_CHECK(vmaCreateBuffer(vmaAllocator, &stagingBufferInfo, &vmaStagingAllocInfo,
-                           &stagingBuffer.vkBuffer,
-                           &stagingBuffer.vmaAllocation,
-                           nullptr));
-
-  void* data;
-  vmaMapMemory(vmaAllocator, stagingBuffer.vmaAllocation, &data);
-  memcpy(data, mesh.vertices.data(), bufferSize);
-  vmaUnmapMemory(vmaAllocator, mesh.vertexBuffer.vmaAllocation);
-
-  VkBufferCreateInfo vertexBufferInfo = stagingBufferInfo;
-  vertexBufferInfo.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
-
-  VmaAllocationCreateInfo vmaVertexAllocInfo = {};
-  vmaVertexAllocInfo.usage = VMA_MEMORY_USAGE_GPU_ONLY;
-
-  VK_CHECK(vmaCreateBuffer(vmaAllocator, &vertexBufferInfo, &vmaVertexAllocInfo,
-                           &mesh.vertexBuffer.vkBuffer,
-                           &mesh.vertexBuffer.vmaAllocation,
-                           nullptr));
-
-  vkutil::immediateSubmit(uploadContext, [=](VkCommandBuffer cmd) -> void {
-    VkBufferCopy copy;
-    copy.dstOffset = 0;
-    copy.srcOffset = 0;
-    copy.size = bufferSize;
-    vkCmdCopyBuffer(cmd, stagingBuffer.vkBuffer, mesh.vertexBuffer.vkBuffer, 1, &copy);
-  });
-
-  vmaDestroyBuffer(vmaAllocator, stagingBuffer.vkBuffer, stagingBuffer.vmaAllocation);
-
-  mainDeletionQueue.pushFunction([=]() {
-    vmaDestroyBuffer(vmaAllocator, mesh.vertexBuffer.vkBuffer, mesh.vertexBuffer.vmaAllocation);
-  });
-
 }
 
 void VulkanEngine::cleanupSwapChain() {
@@ -1254,6 +1205,7 @@ void VulkanEngine::drawObjects(VkCommandBuffer cmd, RenderObject* firstObject, u
       //bind the mesh vertex buffer with offset 0
       VkDeviceSize offset = 0;
       vkCmdBindVertexBuffers(cmd, 0, 1, &object.mesh->vertexBuffer.vkBuffer, &offset);
+      vkCmdBindIndexBuffer(cmd, object.mesh->indexBuffer.vkBuffer, 0, VK_INDEX_TYPE_UINT32);
       lastMesh = object.mesh;
     }
 
@@ -1267,7 +1219,7 @@ void VulkanEngine::drawObjects(VkCommandBuffer cmd, RenderObject* firstObject, u
       drawCount++;
     }
 
-    vkCmdDraw(cmd, (u32)object.mesh->vertices.size(), drawCount, 0, i);
+    vkCmdDrawIndexed(cmd, (u32)object.mesh->indices.size(), drawCount, 0, 0, i);
     i += drawCount - 1;
   }
 
