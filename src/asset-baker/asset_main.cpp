@@ -925,15 +925,16 @@ bool extractObjCombinedMesh(tinyobj::ObjReader& objReader, const fs::path& fileP
 
   //attrib will contain the vertex arrays of the file
   tinyobj::attrib_t attrib = objReader.GetAttrib();
-  bool vertexColorsAvailable = !attrib.colors.empty();
-  bool vertexNormalsAvailable = !attrib.normals.empty();
-  bool vertexUVsAvailable = !attrib.texcoords.empty();
+  u64 vertexPositionsCount = attrib.vertices.size() / 3;
+  u64 vertexColorsCount = attrib.colors.size() / 3;
+  u64 vertexNormalsCount = attrib.normals.size() / 3;
+  u64 vertexUVsCount = attrib.texcoords.size() / 3;
   //shapes contains the info for each separate object in the file
   std::vector<tinyobj::shape_t> shapes = objReader.GetShapes();
   //materials contains the information about the material of each shape, but we won't use it.
   std::vector<tinyobj::material_t> materials = objReader.GetMaterials();
 
-  u32 vertexCount = attrib.vertices.size() / 3;
+  u64 vertexCount = attrib.vertices.size() / 3;
 
   std::vector<Vertex> vertices;
   vertices.reserve(vertexCount * 2); // guesstimate
@@ -941,15 +942,18 @@ bool extractObjCombinedMesh(tinyobj::ObjReader& objReader, const fs::path& fileP
   std::vector<u32> indices;
   indices.reserve(vertexCount * 2); // guesstimate
 
-  struct IndexValue {
-    u32 vertexIndex; // index in vertex vector that will be written to asset file
-    s32 tinyobj_normalIndex;
-    s32 tinyobj_texCoordIndex;
+  auto tinyobjIndexHashLambda = [=](const tinyobj::index_t& tinyobjIndex) {
+    size_t hashVal = tinyobjIndex.vertex_index;
+    hashVal += (tinyobjIndex.texcoord_index * vertexPositionsCount);
+    hashVal += (tinyobjIndex.normal_index * (vertexPositionsCount * vertexUVsCount));
+    return hashVal;
   };
-  std::unordered_map<s32 /*tinyobj_vertexIndex*/, IndexValue> previousIndexValues;
-  u32 indexReferencedVerticesCount = 0;
-
-  u64 expectedIndexCount = 0;
+  auto tinyobjIndexEqualsLambda = [=](const tinyobj::index_t& A, const tinyobj::index_t& B) {
+    return A.vertex_index == B.vertex_index &&
+          A.normal_index == B.normal_index &&
+          A.texcoord_index == B.texcoord_index;
+  };
+  std::unordered_map<tinyobj::index_t, u32 /*vertIndex*/, decltype(tinyobjIndexHashLambda), decltype(tinyobjIndexEqualsLambda)> cachedIndexValues(vertexCount * 3, tinyobjIndexHashLambda, tinyobjIndexEqualsLambda);
 
   for(u64 shapeIndex = 0; shapeIndex < shapes.size(); shapeIndex++) {
     const tinyobj::shape_t& shape = shapes[shapeIndex];
@@ -959,8 +963,6 @@ bool extractObjCombinedMesh(tinyobj::ObjReader& objReader, const fs::path& fileP
     u64 meshFaceCount = mesh.num_face_vertices.size();
     size_t meshIndexOffset = 0;
 
-    expectedIndexCount += mesh.indices.size();
-
     for(u64 faceIndex = 0; faceIndex < meshFaceCount; faceIndex++) {
       u8 faceVertexCount = mesh.num_face_vertices[faceIndex];
       Assert(faceVertexCount == 3); // NOTE: Currently an error if dealing with non-triangles
@@ -968,34 +970,35 @@ bool extractObjCombinedMesh(tinyobj::ObjReader& objReader, const fs::path& fileP
       // Loop over vertices in the face.
       for(u32 faceVertIndex = 0; faceVertIndex < faceVertexCount; faceVertIndex++) {
         // access to vertex
-        tinyobj::index_t index = mesh.indices[meshIndexOffset + faceVertIndex];
-        s32 tinyobj_vertexIndex = index.vertex_index;
-        s32 tinyobj_normalIndex = index.normal_index;
-        s32 tinyobj_texCoordIndex = index.texcoord_index;
+        tinyobj::index_t tinyobjIndex = mesh.indices[meshIndexOffset + faceVertIndex];
+        s32 tinyobj_vertexIndex = tinyobjIndex.vertex_index;
+        s32 tinyobj_normalIndex = tinyobjIndex.normal_index;
+        s32 tinyobj_texCoordIndex = tinyobjIndex.texcoord_index;
         Assert(tinyobj_vertexIndex < vertexCount);
         Assert(tinyobj_vertexIndex >= 0);
 
-        auto prevIndexValue = previousIndexValues.find(tinyobj_vertexIndex);
-        bool tinyobjVertexUsedBefore = prevIndexValue != previousIndexValues.end();
-        if(!tinyobjVertexUsedBefore) { indexReferencedVerticesCount++; }
-        bool matchingIndex = tinyobjVertexUsedBefore &&
-                             prevIndexValue->second.tinyobj_normalIndex == tinyobj_normalIndex &&
-                             prevIndexValue->second.tinyobj_texCoordIndex == tinyobj_texCoordIndex;
-        if(matchingIndex) {
-          indices.push_back(prevIndexValue->second.vertexIndex);
+        auto cachedIndexValue = cachedIndexValues.find(tinyobjIndex);
+
+        s64 matchedVertIndex = -1;
+        if(cachedIndexValue != cachedIndexValues.end()) {
+          matchedVertIndex = cachedIndexValue->second;
+        }
+
+        if(matchedVertIndex != -1) {
+          indices.push_back((u32)matchedVertIndex);
         } else {// new vertex
 
           Vertex newVert;
 
           //vertex position
-          u32 vertexAttributeStartIndex = 3 * index.vertex_index;
+          u32 vertexAttributeStartIndex = 3 * tinyobjIndex.vertex_index;
           newVert.position[0] = attrib.vertices[vertexAttributeStartIndex + 0];
           newVert.position[1] = attrib.vertices[vertexAttributeStartIndex + 1];
           newVert.position[2] = attrib.vertices[vertexAttributeStartIndex + 2];
 
           //vertex normal
-          if(vertexNormalsAvailable) {
-            u32 normalAttributeStartIndex = 3 * index.normal_index;
+          if(vertexNormalsCount > 0) {
+            u32 normalAttributeStartIndex = 3 * tinyobjIndex.normal_index;
             newVert.normal[0] = attrib.normals[normalAttributeStartIndex + 0];
             newVert.normal[1] = attrib.normals[normalAttributeStartIndex + 1];
             newVert.normal[2] = attrib.normals[normalAttributeStartIndex + 2];
@@ -1007,7 +1010,7 @@ bool extractObjCombinedMesh(tinyobj::ObjReader& objReader, const fs::path& fileP
           }
 
           // Optional: vertex colors
-          if(vertexColorsAvailable) {
+          if(vertexColorsCount > 0) {
             u32 colorAttributeStartIndex = vertexAttributeStartIndex;
             newVert.color[0] = attrib.colors[colorAttributeStartIndex + 0];
             newVert.color[1] = attrib.colors[colorAttributeStartIndex + 1];
@@ -1019,8 +1022,8 @@ bool extractObjCombinedMesh(tinyobj::ObjReader& objReader, const fs::path& fileP
           }
 
           //vertex uv
-          if(vertexUVsAvailable) {
-            u32 texCoordAttributeStartIndex = 2 * index.texcoord_index;
+          if(vertexUVsCount > 0) {
+            u32 texCoordAttributeStartIndex = 2 * tinyobjIndex.texcoord_index;
             newVert.uv[0] = attrib.texcoords[texCoordAttributeStartIndex + 0];
             newVert.uv[1] = 1.0f - attrib.texcoords[texCoordAttributeStartIndex + 1]; // TODO: Is inverting uv y coordinate correct?
           } else {
@@ -1029,35 +1032,15 @@ bool extractObjCombinedMesh(tinyobj::ObjReader& objReader, const fs::path& fileP
           }
 
           vertices.push_back(newVert);
-          u32 newVertIndex = vertices.size() - 1;
+          u32 newVertIndex = (u32)(vertices.size() - 1);
           indices.push_back(newVertIndex);
 
-          IndexValue indexValue;
-          indexValue.vertexIndex = newVertIndex;
-          indexValue.tinyobj_normalIndex = tinyobj_normalIndex;
-          indexValue.tinyobj_texCoordIndex = tinyobj_texCoordIndex;
-          previousIndexValues[tinyobj_vertexIndex] = indexValue;
+          std::pair<tinyobj::index_t, u32 /*vertIndex*/> newCachedValue = { tinyobjIndex, newVertIndex };
+          cachedIndexValues.insert(newCachedValue);
         }
       }
       meshIndexOffset += faceVertexCount;
     }
-  }
-
-  // TODO: Why do some OBJs (lost_empire & BB8) have unreferenced vertices?
-  if(indexReferencedVerticesCount != vertexCount || expectedIndexCount != indices.size()) {
-    Assert(indexReferencedVerticesCount <= vertexCount);
-    Assert(indices.size() <= expectedIndexCount);
-    u32 unreferencedVertexCount = (u32)(vertexCount - indexReferencedVerticesCount);
-    u32 missingIndexCount = (u32)(expectedIndexCount - indices.size());
-    printf("Warning: OBJ file \"%s\" contains %u vertices with no matching indices and is missing %u indices\n", filePath.filename().string().c_str(), unreferencedVertexCount, missingIndexCount);
-    // debug help if it becomes a problem
-//    std::vector<u32> unreferencedVertices;
-//    unreferencedVertices.reserve(vertexCount - indexReferencedVerticesCount);
-//    for(u32 i = 0; i < vertexCount; i++) {
-//      if(vertexIndexCounts[i] == 0) {
-//        unreferencedVertices.push_back(i);
-//      }
-//    }
   }
 
   MeshInfo meshInfo;
