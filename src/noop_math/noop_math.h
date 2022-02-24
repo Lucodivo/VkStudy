@@ -110,6 +110,7 @@ namespace noop {
 
 // floating point
   b32 epsilonComparison(f32 a, f32 b, f32 epsilon = COMPARISON_EPSILON);
+  b32 epsilonComparison(f64 a, f64 b, f64 epsilon = COMPARISON_EPSILON);
   f32 step(f32 edge, f32 x);
   f32 clamp(f32 minVal, f32 maxVal, f32 x);
   f32 smoothStep(f32 edge1, f32 edge2, f32 x);

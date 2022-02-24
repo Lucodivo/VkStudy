@@ -1,28 +1,31 @@
 #include <iostream>
-#include <json.hpp>
+#include <unordered_set>
 #include <fstream>
 #include <filesystem>
-#include <unordered_set>
-
 namespace fs = std::filesystem;
 
 #include <lz4.h>
 #include <chrono>
+#include <json.hpp>
 
 #include <stb_image.h>
 #include <tiny_obj_loader.h>
 #include <tiny_gltf.h>
+
+#include "../types.h"
+
+#include "../util.h"
+#include "../util.cpp"
 
 #include <asset_loader.h>
 #include <texture_asset.h>
 #include <mesh_asset.h>
 #include <material_asset.h>
 #include <prefab_asset.h>
+using namespace assets;
 
 #include "../noop_math/noop_math.h"
 using namespace noop;
-
-using namespace assets;
 
 struct {
   const char* texture = ".tx";
@@ -38,6 +41,11 @@ struct ConverterState {
   std::vector<fs::path> bakedFilePaths;
 
   fs::path convertToExportRelative(const fs::path& path) const;
+};
+
+struct AssetBakeCachedItem {
+  std::string fileName;
+  f64 lastModified;
 };
 
 bool convertImage(const fs::path& inputPath, ConverterState& converterState);
@@ -57,9 +65,86 @@ std::string calculateGltfMeshName(tinygltf::Model& model, int meshIndex, int pri
 
 bool extractObjCombinedMesh(tinyobj::ObjReader& objReader, const fs::path& filePath, const fs::path& outputFolder, ConverterState& converterState);
 
+void saveCache(const std::unordered_map<std::string, AssetBakeCachedItem>& oldCache, std::vector<AssetBakeCachedItem> newBakedItems);
+void loadCache(std::unordered_map<std::string, AssetBakeCachedItem>& assetBakeCache);
+
 void writeOutputData(const ConverterState& converterState);
 void replace(std::string& str, const char* oldTokens, u32 oldTokensCount, char newToken);
 std::size_t fileCountInDir(fs::path dirPath);
+
+struct {
+  const char* assetBakerCacheFileName = "Asset-Baker-Cache.asb";
+  const char* cacheFiles = "cacheFiles";
+  const char* fileName = "fileName";
+  const char* lastModified = "lastModified";
+} cacheJsonStrings;
+
+f64 lastModifiedTimeStamp(const fs::path& file) {
+  auto lastModifiedTimePoint = fs::last_write_time(file);
+  f64 lastModified = (f64)(lastModifiedTimePoint.time_since_epoch().count());
+  return lastModified;
+}
+
+bool fileUpToDate(const std::unordered_map<std::string, AssetBakeCachedItem>& cache, fs::path file) {
+  std::string fileName = file.filename().string();
+  auto cachedItem = cache.find(fileName);
+  if(cachedItem == cache.end()) {
+    return false;
+  }
+
+  f64 lastModified = lastModifiedTimeStamp(file);
+
+  bool upToDate = epsilonComparison(lastModified, cachedItem->second.lastModified);
+
+  if(upToDate) {
+    printf("Asset file \"%s\" is up-to-date\n", fileName.c_str());
+  }
+
+  return upToDate;
+}
+
+void saveCache(const std::unordered_map<std::string, AssetBakeCachedItem>& oldCache, std::vector<AssetBakeCachedItem> newBakedItems) {
+  nlohmann::json cacheJson;
+
+  nlohmann::json bakedFiles;
+  for(auto& oldCacheItem : oldCache) {
+    nlohmann::json newCacheItemJson;
+    newCacheItemJson[cacheJsonStrings.fileName] = oldCacheItem.second.fileName;
+    newCacheItemJson[cacheJsonStrings.lastModified] = oldCacheItem.second.lastModified;
+    bakedFiles.push_back(newCacheItemJson);
+  }
+  for(auto& newCacheItem : newBakedItems) {
+    nlohmann::json newCacheItemJson;
+    newCacheItemJson[cacheJsonStrings.fileName] = newCacheItem.fileName;
+    newCacheItemJson[cacheJsonStrings.lastModified] = newCacheItem.lastModified;
+    bakedFiles.push_back(newCacheItemJson);
+  }
+
+  cacheJson[cacheJsonStrings.cacheFiles] = bakedFiles;
+  std::string jsonString = cacheJson.dump();
+  writeFile(cacheJsonStrings.assetBakerCacheFileName, jsonString);
+}
+
+void loadCache(std::unordered_map<std::string, AssetBakeCachedItem>& assetBakeCache) {
+  std::vector<char> fileBytes;
+
+  if(!readFile(cacheJsonStrings.assetBakerCacheFileName, fileBytes)) {
+    return;
+  }
+
+  std::string fileString(fileBytes.begin(), fileBytes.end());
+  nlohmann::json cache = nlohmann::json::parse(fileString);
+
+  nlohmann::json cachedFiles = cache[cacheJsonStrings.cacheFiles];
+
+  // range-based for
+  AssetBakeCachedItem cachedItem;
+  for (auto& element : cachedFiles) {
+    cachedItem.fileName = element[cacheJsonStrings.fileName];
+    cachedItem.lastModified = element[cacheJsonStrings.lastModified];
+    assetBakeCache[cachedItem.fileName] = cachedItem;
+  }
+}
 
 int main(int argc, char* argv[]) {
 
@@ -68,6 +153,11 @@ int main(int argc, char* argv[]) {
     std::cout << "You need to supply the assets directory";
     return -1;
   }
+
+  std::unordered_map<std::string, AssetBakeCachedItem> oldAssetBakeCache;
+  loadCache(oldAssetBakeCache);
+  std::vector<AssetBakeCachedItem> newlyCachedItems;
+  newlyCachedItems.reserve(50);
 
   ConverterState converterState;
   converterState.assetsDir = {argv[1]};
@@ -94,8 +184,10 @@ int main(int argc, char* argv[]) {
     fs::path fileExt = filePath.extension();
     std::string pathStr = filePath.string();
 
-    // skip directories
-    if(fs::is_directory(filePath)) { continue; }
+    // skip directories and up-to-date baked assets
+    if(fs::is_directory(filePath) || fileUpToDate(oldAssetBakeCache, filePath)) {
+      continue;
+    }
 
     std::cout << "File: " << pathStr << std::endl;
 
@@ -166,9 +258,17 @@ int main(int argc, char* argv[]) {
 //        extractGltfNodes(model, filePath, outputFolder, converterState);
       }
     }
+
+    // Remember the baked item
+    AssetBakeCachedItem newlyBakedItem;
+    newlyBakedItem.fileName = filePath.filename().string();
+    newlyBakedItem.lastModified = lastModifiedTimeStamp(filePath);
+    newlyCachedItems.push_back(newlyBakedItem);
+
   }
 
   writeOutputData(converterState);
+  saveCache(oldAssetBakeCache, newlyCachedItems);
 
   return 0;
 }

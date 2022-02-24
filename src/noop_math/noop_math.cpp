@@ -8,6 +8,11 @@ namespace noop {
     return (diff <= epsilon && diff >= -epsilon);
   }
 
+  b32 epsilonComparison(f64 a, f64 b, f64 epsilon) {
+    f64 diff = a - b;
+    return (diff <= epsilon && diff >= -epsilon);
+  }
+
   f32 step(f32 edge, f32 x) {
     return x < edge ? 0.0f : 1.0f;
   }
