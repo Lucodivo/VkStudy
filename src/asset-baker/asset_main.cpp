@@ -28,11 +28,31 @@ using namespace assets;
 using namespace noop;
 
 struct {
+  const char* png = ".png";
+  const char* jpg = ".jpg";
+  const char* tga = ".TGA";
+  const char* obj = ".obj";
+  const char* gltf = ".gltf";
+  const char* glb = ".glb";
+} supportedFileExtensions;
+
+struct {
   const char* texture = ".tx";
   const char* mesh = ".mesh";
   const char* material = ".mat";
   const char* prefab = ".pfb";
-} extensions;
+} bakedExtensions;
+
+struct {
+  const char* assetBakerCacheFileName = "Asset-Baker-Cache.asb";
+  const char* cacheFiles = "cacheFiles";
+  const char* originalFileName = "originalFileName";
+  const char* originalFileLastModified = "originalFileLastModified";
+  const char* bakedFiles = "bakedFiles";
+  const char* fileName = "fileName";
+  const char* fileExt = "fileExt";
+  const char* filePath = "filePath";
+} cacheJsonStrings;
 
 struct ConverterState {
   fs::path assetsDir;
@@ -43,9 +63,16 @@ struct ConverterState {
   fs::path convertToExportRelative(const fs::path& path) const;
 };
 
+struct BakedFile {
+  std::string path;
+  std::string ext;
+  std::string name;
+};
+
 struct AssetBakeCachedItem {
-  std::string fileName;
-  f64 lastModified;
+  std::string originalFileName;
+  f64 originalFileLastModified;
+  std::vector<BakedFile> bakedFiles;
 };
 
 bool convertImage(const fs::path& inputPath, ConverterState& converterState);
@@ -65,19 +92,12 @@ std::string calculateGltfMeshName(tinygltf::Model& model, int meshIndex, int pri
 
 bool extractObjCombinedMesh(tinyobj::ObjReader& objReader, const fs::path& filePath, const fs::path& outputFolder, ConverterState& converterState);
 
-void saveCache(const std::unordered_map<std::string, AssetBakeCachedItem>& oldCache, std::vector<AssetBakeCachedItem> newBakedItems);
+void saveCache(const std::unordered_map<std::string, AssetBakeCachedItem>& oldCache, const std::vector<AssetBakeCachedItem>& newBakedItems);
 void loadCache(std::unordered_map<std::string, AssetBakeCachedItem>& assetBakeCache);
 
-void writeOutputData(const ConverterState& converterState);
+void writeOutputData(const std::unordered_map<std::string, AssetBakeCachedItem>& oldCache, const ConverterState& converterState);
 void replace(std::string& str, const char* oldTokens, u32 oldTokensCount, char newToken);
 std::size_t fileCountInDir(fs::path dirPath);
-
-struct {
-  const char* assetBakerCacheFileName = "Asset-Baker-Cache.asb";
-  const char* cacheFiles = "cacheFiles";
-  const char* fileName = "fileName";
-  const char* lastModified = "lastModified";
-} cacheJsonStrings;
 
 f64 lastModifiedTimeStamp(const fs::path& file) {
   auto lastModifiedTimePoint = fs::last_write_time(file);
@@ -94,7 +114,7 @@ bool fileUpToDate(const std::unordered_map<std::string, AssetBakeCachedItem>& ca
 
   f64 lastModified = lastModifiedTimeStamp(file);
 
-  bool upToDate = epsilonComparison(lastModified, cachedItem->second.lastModified);
+  bool upToDate = epsilonComparison(lastModified, cachedItem->second.originalFileLastModified);
 
   if(upToDate) {
     printf("Asset file \"%s\" is up-to-date\n", fileName.c_str());
@@ -103,25 +123,47 @@ bool fileUpToDate(const std::unordered_map<std::string, AssetBakeCachedItem>& ca
   return upToDate;
 }
 
-void saveCache(const std::unordered_map<std::string, AssetBakeCachedItem>& oldCache, std::vector<AssetBakeCachedItem> newBakedItems) {
+void saveCache(const std::unordered_map<std::string, AssetBakeCachedItem>& oldCache, const std::vector<AssetBakeCachedItem>& newBakedItems) {
   nlohmann::json cacheJson;
 
   nlohmann::json bakedFiles;
-  for(auto& oldCacheItem : oldCache) {
+  for(auto& [fileName, oldCacheItem] : oldCache) {
     nlohmann::json newCacheItemJson;
-    newCacheItemJson[cacheJsonStrings.fileName] = oldCacheItem.second.fileName;
-    newCacheItemJson[cacheJsonStrings.lastModified] = oldCacheItem.second.lastModified;
+    newCacheItemJson[cacheJsonStrings.originalFileName] = oldCacheItem.originalFileName;
+    newCacheItemJson[cacheJsonStrings.originalFileLastModified] = oldCacheItem.originalFileLastModified;
+    nlohmann::json newCacheBakedFiles;
+    u32 bakedFileCount = (u32)oldCacheItem.bakedFiles.size();
+    for(u32 i = 0; i < bakedFileCount; i++) {
+      nlohmann::json newCacheBakedFile;
+      const BakedFile& bakedFile = oldCacheItem.bakedFiles[i];
+      newCacheBakedFile[cacheJsonStrings.filePath] = bakedFile.path;
+      newCacheBakedFile[cacheJsonStrings.fileName] = bakedFile.name;
+      newCacheBakedFile[cacheJsonStrings.fileExt] = bakedFile.ext;
+      newCacheBakedFiles.push_back(newCacheBakedFile);
+    }
+    newCacheItemJson[cacheJsonStrings.bakedFiles] = newCacheBakedFiles;
     bakedFiles.push_back(newCacheItemJson);
   }
   for(auto& newCacheItem : newBakedItems) {
     nlohmann::json newCacheItemJson;
-    newCacheItemJson[cacheJsonStrings.fileName] = newCacheItem.fileName;
-    newCacheItemJson[cacheJsonStrings.lastModified] = newCacheItem.lastModified;
+    newCacheItemJson[cacheJsonStrings.originalFileName] = newCacheItem.originalFileName;
+    newCacheItemJson[cacheJsonStrings.originalFileLastModified] = newCacheItem.originalFileLastModified;
+    nlohmann::json newCacheBakedFiles;
+    u32 bakedFileCount = (u32)newCacheItem.bakedFiles.size();
+    for(u32 i = 0; i < bakedFileCount; i++) {
+      nlohmann::json newCacheBakedFile;
+      const BakedFile& bakedFile = newCacheItem.bakedFiles[i];
+      newCacheBakedFile[cacheJsonStrings.filePath] = bakedFile.path;
+      newCacheBakedFile[cacheJsonStrings.fileName] = bakedFile.name;
+      newCacheBakedFile[cacheJsonStrings.fileExt] = bakedFile.ext;
+      newCacheBakedFiles.push_back(newCacheBakedFile);
+    }
+    newCacheItemJson[cacheJsonStrings.bakedFiles] = newCacheBakedFiles;
     bakedFiles.push_back(newCacheItemJson);
   }
 
   cacheJson[cacheJsonStrings.cacheFiles] = bakedFiles;
-  std::string jsonString = cacheJson.dump();
+  std::string jsonString = cacheJson.dump(1);
   writeFile(cacheJsonStrings.assetBakerCacheFileName, jsonString);
 }
 
@@ -137,12 +179,20 @@ void loadCache(std::unordered_map<std::string, AssetBakeCachedItem>& assetBakeCa
 
   nlohmann::json cachedFiles = cache[cacheJsonStrings.cacheFiles];
 
-  // range-based for
-  AssetBakeCachedItem cachedItem;
   for (auto& element : cachedFiles) {
-    cachedItem.fileName = element[cacheJsonStrings.fileName];
-    cachedItem.lastModified = element[cacheJsonStrings.lastModified];
-    assetBakeCache[cachedItem.fileName] = cachedItem;
+    AssetBakeCachedItem cachedItem;
+    cachedItem.originalFileName = element[cacheJsonStrings.originalFileName];
+    cachedItem.originalFileLastModified = element[cacheJsonStrings.originalFileLastModified];
+    u32 bakedFileCount = (u32)element[cacheJsonStrings.bakedFiles].size();
+    for(u32 i = 0; i < bakedFileCount; i++) {
+      nlohmann::json bakedFileJson = element[cacheJsonStrings.bakedFiles][i];
+      BakedFile bakedFile;
+      bakedFile.path = bakedFileJson[cacheJsonStrings.filePath];
+      bakedFile.name = bakedFileJson[cacheJsonStrings.fileName];
+      bakedFile.ext = bakedFileJson[cacheJsonStrings.fileExt];
+      cachedItem.bakedFiles.push_back(bakedFile);
+    }
+    assetBakeCache[cachedItem.originalFileName] = cachedItem;
   }
 }
 
@@ -191,11 +241,12 @@ int main(int argc, char* argv[]) {
 
     std::cout << "File: " << pathStr << std::endl;
 
-    if(fileExt == ".png" || fileExt == ".jpg" || fileExt == ".TGA") {
+    u32 convertedFilesCountBefore = (u32)converterState.bakedFilePaths.size();
+
+    if(fileExt == supportedFileExtensions.png || fileExt == supportedFileExtensions.jpg || fileExt == supportedFileExtensions.tga) {
       convertImage(p.path(), converterState);
     }
-
-    if(fileExt == ".obj") {
+    else if(fileExt == supportedFileExtensions.obj) {
       std::cout << "OBJ: " << filePath.string() << std::endl;
 
       // find directory of file
@@ -222,8 +273,7 @@ int main(int argc, char* argv[]) {
 
       extractObjCombinedMesh(reader, filePath, outputFolder, converterState);
     }
-
-    if(fileExt == ".gltf" || fileExt == ".glb") {
+    else if(fileExt == supportedFileExtensions.gltf || fileExt == supportedFileExtensions.glb) {
       using namespace tinygltf;
       Model model;
       TinyGLTF loader;
@@ -231,7 +281,7 @@ int main(int argc, char* argv[]) {
       std::string warn;
 
       bool ret;
-      if(fileExt == ".gltf") {
+      if(fileExt == supportedFileExtensions.gltf) {
         ret = loader.LoadASCIIFromFile(&model, &err, &warn, filePath.string());
       } else { // glbExtension
         ret = loader.LoadBinaryFromFile(&model, &err, &warn, filePath.string());
@@ -257,17 +307,29 @@ int main(int argc, char* argv[]) {
 //        extractGltfMeshes(model, pathStr, outputFolder, converterState);
 //        extractGltfNodes(model, filePath, outputFolder, converterState);
       }
+    } else {
+      continue;
     }
 
-    // Remember the baked item
+    // remember baked item
     AssetBakeCachedItem newlyBakedItem;
-    newlyBakedItem.fileName = filePath.filename().string();
-    newlyBakedItem.lastModified = lastModifiedTimeStamp(filePath);
+    newlyBakedItem.originalFileName = filePath.filename().string();
+    newlyBakedItem.originalFileLastModified = lastModifiedTimeStamp(filePath);
+    const fs::path& recentlyBakedFile = converterState.bakedFilePaths.back();
+    u32 convertedFilesCount = (u32)converterState.bakedFilePaths.size();
+    u32 newlyConvertedItemCount = convertedFilesCount - convertedFilesCountBefore;
+    for(u32 i = 0; i < newlyConvertedItemCount; i++) {
+      const fs::path& recentlyBakedFile = converterState.bakedFilePaths[convertedFilesCount - i - 1];
+      BakedFile bakedFile;
+      bakedFile.path = recentlyBakedFile.string();
+      bakedFile.name = recentlyBakedFile.filename().string();
+      bakedFile.ext = recentlyBakedFile.extension().string();
+      newlyBakedItem.bakedFiles.push_back(bakedFile);
+    }
     newlyCachedItems.push_back(newlyBakedItem);
-
   }
 
-  writeOutputData(converterState);
+  writeOutputData(oldAssetBakeCache, converterState);
   saveCache(oldAssetBakeCache, newlyCachedItems);
 
   return 0;
@@ -361,7 +423,7 @@ bool convertImage(const fs::path& inputPath, ConverterState& converterState) {
 
   fs::path relative = inputPath.lexically_proximate(converterState.assetsDir);
   fs::path exportPath = converterState.bakedAssetDir / relative;
-  exportPath.replace_extension(extensions.texture);
+  exportPath.replace_extension(bakedExtensions.texture);
 
   saveAssetFile(exportPath.string().c_str(), newImage);
   converterState.bakedFilePaths.push_back(exportPath);
@@ -435,11 +497,11 @@ void extractGltfVertices(tinygltf::Primitive& primitive, tinygltf::Model& model,
   std::vector<u8> pos_data;
   unpackGltfBuffer(model, pos_accesor, pos_data);
 
-
-  for(int i = 0; i < _vertices.size(); i++) {
+  u32 vertexCount = (u32)_vertices.size();
+  for(u32 i = 0; i < vertexCount; i++) {
     if(pos_accesor.type == TINYGLTF_TYPE_VEC3) {
       if(pos_accesor.componentType == TINYGLTF_COMPONENT_TYPE_FLOAT) {
-        float* dtf = (float*)pos_data.data();
+        f32* dtf = (f32*)pos_data.data();
 
         //vec3f
         _vertices[i].position[0] = *(dtf + (i * 3) + 0);
@@ -459,10 +521,10 @@ void extractGltfVertices(tinygltf::Primitive& primitive, tinygltf::Model& model,
   unpackGltfBuffer(model, normal_accesor, normal_data);
 
 
-  for(int i = 0; i < _vertices.size(); i++) {
+  for(u32 i = 0; i < vertexCount; i++) {
     if(normal_accesor.type == TINYGLTF_TYPE_VEC3) {
       if(normal_accesor.componentType == TINYGLTF_COMPONENT_TYPE_FLOAT) {
-        float* dtf = (float*)normal_data.data();
+        f32* dtf = (f32*)normal_data.data();
 
         //vec3f
         _vertices[i].normal[0] = *(dtf + (i * 3) + 0);
@@ -486,10 +548,10 @@ void extractGltfVertices(tinygltf::Primitive& primitive, tinygltf::Model& model,
   unpackGltfBuffer(model, uv_accesor, uv_data);
 
 
-  for(int i = 0; i < _vertices.size(); i++) {
+  for(u32 i = 0; i < vertexCount; i++) {
     if(uv_accesor.type == TINYGLTF_TYPE_VEC2) {
       if(uv_accesor.componentType == TINYGLTF_COMPONENT_TYPE_FLOAT) {
-        float* dtf = (float*)uv_data.data();
+        f32* dtf = (f32*)uv_data.data();
 
         //vec3f
         _vertices[i].uv[0] = *(dtf + (i * 2) + 0);
@@ -540,7 +602,8 @@ void extractGltfIndices(tinygltf::Primitive& primitive, tinygltf::Model& model, 
   std::vector<u8> unpackedIndices;
   unpackGltfBuffer(model, model.accessors[indexaccesor], unpackedIndices);
 
-  for(int i = 0; i < model.accessors[indexaccesor].count; i++) {
+  u32 gltfAccessorsCount = (u32)model.accessors[indexaccesor].count;
+  for(u32 i = 0; i < gltfAccessorsCount; i++) {
 
     u32 index;
     switch(componentType) {
@@ -561,7 +624,8 @@ void extractGltfIndices(tinygltf::Primitive& primitive, tinygltf::Model& model, 
     _primIndices.push_back(index);
   }
 
-  for(int i = 0; i < _primIndices.size() / 3; i++) {
+  u32 primIndicesCount = (u32)_primIndices.size() / 3;
+  for(u32 i = 0; i < primIndicesCount; i++) {
     //flip the triangle
 
     std::swap(_primIndices[i * 3 + 1], _primIndices[i * 3 + 2]);
@@ -638,13 +702,19 @@ bool extractGltfCombinedMesh(tinygltf::Model& gltfModel, const fs::path& filePat
   };
 
   auto indexHashLambda = [=](const UniqueVert& uniqueVert) {
-    size_t hashVal = uniqueVert.positionBufferOffset;
-    hashVal += uniqueVert.normalBufferOffset << 16;
-    hashVal += uniqueVert.texCoordBufferOffset << 32;
-    hashVal += uniqueVert.positionBufferIndex << 48;
-    hashVal += uniqueVert.normalBufferIndex << 52;
-    hashVal += uniqueVert.texCoordBufferIndex << 56;
-    hashVal += uniqueVert.materialIndex << 60;
+    u64 hashVal = uniqueVert.positionBufferOffset;
+    hashVal = hashVal << 16;
+    hashVal += uniqueVert.normalBufferOffset;
+    hashVal = hashVal << 16;
+    hashVal += uniqueVert.texCoordBufferOffset;
+    hashVal = hashVal << 4;
+    hashVal += uniqueVert.positionBufferIndex;
+    hashVal = hashVal << 4;
+    hashVal += uniqueVert.normalBufferIndex;
+    hashVal = hashVal << 4;
+    hashVal += uniqueVert.texCoordBufferIndex;
+    hashVal = hashVal << 4;
+    hashVal += uniqueVert.materialIndex;
     return hashVal;
   };
   auto indexEqualsLambda = [=](const UniqueVert& A, const UniqueVert& B) {
@@ -679,14 +749,14 @@ bool extractGltfCombinedMesh(tinygltf::Model& gltfModel, const fs::path& filePat
       Assert(gltfPrimitive.attributes.find(positionAttrKeyString) != gltfPrimitive.attributes.end());
       gltfAttributeMetadata positionAttribute = populateAttributeMetadata(gltfModel, positionAttrKeyString, gltfPrimitive);
       f32* positionAttributeValues = (f32*)(gltfModel.buffers[positionAttribute.bufferIndex].data.data());
-      u32 positionAttributeOffset = positionAttribute.bufferByteOffset / sizeof(f32);
+      u32 positionAttributeOffset = (u32)(positionAttribute.bufferByteOffset / sizeof(f32));
 
       // normal attributes
       bool normalAttributesAvailable = gltfPrimitive.attributes.find(normalAttrKeyString) != gltfPrimitive.attributes.end();
       Assert(normalAttributesAvailable); // TODO: Calc normals if not available?
       gltfAttributeMetadata normalAttribute = populateAttributeMetadata(gltfModel, normalAttrKeyString, gltfPrimitive);
       f32* normalAttributeValues = (f32*)(gltfModel.buffers[normalAttribute.bufferIndex].data.data());
-      u32 normalAttributeOffset = normalAttribute.bufferByteOffset / sizeof(f32);
+      u32 normalAttributeOffset = (u32)(normalAttribute.bufferByteOffset / sizeof(f32));
 
       // texture 0 uv coord attribute data
       bool texture0AttributesAvailable = gltfPrimitive.attributes.find(texture0AttrKeyString) != gltfPrimitive.attributes.end();
@@ -696,7 +766,7 @@ bool extractGltfCombinedMesh(tinygltf::Model& gltfModel, const fs::path& filePat
       if(texture0AttributesAvailable) {
         texture0Attribute = populateAttributeMetadata(gltfModel, texture0AttrKeyString, gltfPrimitive);
         texture0AttributeValues = (f32*)(gltfModel.buffers[texture0Attribute.bufferIndex].data.data());
-        texture0AttributeOffset = texture0Attribute.bufferByteOffset / sizeof(f32);
+        texture0AttributeOffset = (u32)(texture0Attribute.bufferByteOffset / sizeof(f32));
       }
 
       tinygltf::Material gltfMaterial = gltfModel.materials[gltfPrimitive.material];
@@ -768,7 +838,7 @@ bool extractGltfCombinedMesh(tinygltf::Model& gltfModel, const fs::path& filePat
 
   assets::AssetFile newFile = assets::packMesh(meshInfo, (char*)vertices.data(), (char*)indices.data());
 
-  std::string newFileName = filePath.filename().replace_extension(extensions.mesh).string();
+  std::string newFileName = filePath.filename().replace_extension(bakedExtensions.mesh).string();
   fs::path meshPath = outputFolder / newFileName;
 
   //save to disk
@@ -812,7 +882,7 @@ bool extractGltfMeshes(tinygltf::Model& gltfModel, const std::string& filePath, 
 
       assets::AssetFile newFile = assets::packMesh(meshInfo, (char*)vertices.data(), (char*)indices.data());
 
-      fs::path meshPath = outputFolder / (meshName + extensions.mesh);
+      fs::path meshPath = outputFolder / (meshName + bakedExtensions.mesh);
 
       //save to disk
       saveAssetFile(meshPath.string().c_str(), newFile);
@@ -839,7 +909,7 @@ void extractGltfMaterials(tinygltf::Model& model, const fs::path& input, const f
 
       fs::path baseColorPath = outputFolder.parent_path() / baseImage.uri;
 
-      baseColorPath.replace_extension(extensions.texture);
+      baseColorPath.replace_extension(bakedExtensions.texture);
 
       baseColorPath = converterState.convertToExportRelative(baseColorPath);
 
@@ -851,7 +921,7 @@ void extractGltfMaterials(tinygltf::Model& model, const fs::path& input, const f
 
       fs::path baseColorPath = outputFolder.parent_path() / baseImage.uri;
 
-      baseColorPath.replace_extension(extensions.texture);
+      baseColorPath.replace_extension(bakedExtensions.texture);
 
       baseColorPath = converterState.convertToExportRelative(baseColorPath);
 
@@ -864,7 +934,7 @@ void extractGltfMaterials(tinygltf::Model& model, const fs::path& input, const f
 
       fs::path baseColorPath = outputFolder.parent_path() / baseImage.uri;
 
-      baseColorPath.replace_extension(extensions.texture);
+      baseColorPath.replace_extension(bakedExtensions.texture);
 
       baseColorPath = converterState.convertToExportRelative(baseColorPath);
 
@@ -877,7 +947,7 @@ void extractGltfMaterials(tinygltf::Model& model, const fs::path& input, const f
 
       fs::path baseColorPath = outputFolder.parent_path() / baseImage.uri;
 
-      baseColorPath.replace_extension(extensions.texture);
+      baseColorPath.replace_extension(bakedExtensions.texture);
 
       baseColorPath = converterState.convertToExportRelative(baseColorPath);
 
@@ -890,14 +960,14 @@ void extractGltfMaterials(tinygltf::Model& model, const fs::path& input, const f
 
       fs::path baseColorPath = outputFolder.parent_path() / baseImage.uri;
 
-      baseColorPath.replace_extension(extensions.texture);
+      baseColorPath.replace_extension(bakedExtensions.texture);
 
       baseColorPath = converterState.convertToExportRelative(baseColorPath);
 
       newMaterial.textures["emissive"] = baseColorPath.string();
     }
 
-    fs::path materialPath = outputFolder / (matName + extensions.material);
+    fs::path materialPath = outputFolder / (matName + bakedExtensions.material);
 
     if(gltfMat.alphaMode.compare("BLEND") == 0) {
       newMaterial.transparency = TransparencyMode::Transparent;
@@ -917,7 +987,8 @@ void extractGltfNodes(tinygltf::Model& model, const fs::path& input, const fs::p
   assets::PrefabInfo prefab;
 
   std::vector<u64> meshNodes;
-  for(int i = 0; i < model.nodes.size(); i++) {
+  u32 gltfNodeCount = (u32)model.nodes.size();
+  for(u32 i = 0; i < gltfNodeCount; i++) {
     auto& node = model.nodes[i];
     prefab.nodeNames[i] = node.name;
 
@@ -928,7 +999,7 @@ void extractGltfNodes(tinygltf::Model& model, const fs::path& input, const fs::p
 
     //node has a nodeMatrix
     if(!node.matrix.empty()) {
-      for(int n = 0; n < 16; n++) {
+      for(u32 n = 0; n < 16; n++) {
         nodeMatrix.val[n] = (f32)node.matrix[n];
       }
       //nodeMatrix = nodeMatrix * flipY;
@@ -972,13 +1043,13 @@ void extractGltfNodes(tinygltf::Model& model, const fs::path& input, const fs::p
         auto primitive = mesh.primitives[0];
         std::string meshName = calculateGltfMeshName(model, node.mesh, 0);
 
-        fs::path meshPath = outputFolder / (meshName + extensions.mesh);
+        fs::path meshPath = outputFolder / (meshName + bakedExtensions.mesh);
 
         int material = primitive.material;
 
         std::string matName = calculateGltfMaterialName(model, material);
 
-        fs::path materialPath = outputFolder / (matName + extensions.material);
+        fs::path materialPath = outputFolder / (matName + bakedExtensions.material);
 
         assets::PrefabInfo::NodeMesh nodeMesh;
         nodeMesh.meshPath = converterState.convertToExportRelative(meshPath).string();
@@ -991,7 +1062,7 @@ void extractGltfNodes(tinygltf::Model& model, const fs::path& input, const fs::p
 
   //calculate parent hierarchies
   //gltf stores children, but we want parent
-  for(int i = 0; i < model.nodes.size(); i++) {
+  for(u32 i = 0; i < gltfNodeCount; i++) {
     for(auto c: model.nodes[i].children) {
       prefab.nodeParents[c] = i;
     }
@@ -1009,7 +1080,7 @@ void extractGltfNodes(tinygltf::Model& model, const fs::path& input, const fs::p
 
 
   //flip[2][2] = -1;
-  for(int i = 0; i < model.nodes.size(); i++) {
+  for(u32 i = 0; i < gltfNodeCount; i++) {
     auto it = prefab.nodeParents.find(i);
     if(it == prefab.nodeParents.end()) {
       auto matrix = prefab.matrices[prefab.nodeMatrices[i]];
@@ -1026,7 +1097,8 @@ void extractGltfNodes(tinygltf::Model& model, const fs::path& input, const fs::p
 
   size_t nodeIndex = model.nodes.size();
   //iterate nodes with mesh, convert each submesh into a node
-  for(int i = 0; i < meshNodes.size(); i++) {
+  u32 meshNodesCount = (u32)meshNodes.size();
+  for(u32 i = 0; i < meshNodesCount; i++) {
     tinygltf::Node& node = model.nodes[i];
 
     if(node.mesh < 0) break;
@@ -1047,8 +1119,8 @@ void extractGltfNodes(tinygltf::Model& model, const fs::path& input, const fs::p
       std::string matName = calculateGltfMaterialName(model, material);
       std::string meshName = calculateGltfMeshName(model, node.mesh, primindex);
 
-      fs::path materialPath = outputFolder / (matName + extensions.material);
-      fs::path meshPath = outputFolder / (meshName + extensions.mesh);
+      fs::path materialPath = outputFolder / (matName + bakedExtensions.material);
+      fs::path meshPath = outputFolder / (meshName + bakedExtensions.mesh);
 
       assets::PrefabInfo::NodeMesh nodeMesh;
       nodeMesh.meshPath = converterState.convertToExportRelative(meshPath).string();
@@ -1064,7 +1136,7 @@ void extractGltfNodes(tinygltf::Model& model, const fs::path& input, const fs::p
 
   fs::path sceneFilePath = (outputFolder.parent_path()) / input.stem();
 
-  sceneFilePath.replace_extension(extensions.prefab);
+  sceneFilePath.replace_extension(bakedExtensions.prefab);
 
   //save to disk
   saveAssetFile(sceneFilePath.string().c_str(), newFile);
@@ -1205,7 +1277,7 @@ bool extractObjCombinedMesh(tinyobj::ObjReader& objReader, const fs::path& fileP
 
   assets::AssetFile newFile = assets::packMesh(meshInfo, (char*)vertices.data(), (char*)indices.data());
 
-  std::string newFileName = filePath.filename().replace_extension(extensions.mesh).string();
+  std::string newFileName = filePath.filename().replace_extension(bakedExtensions.mesh).string();
   fs::path meshPath = outputFolder / newFileName;
 
   //save to disk
@@ -1269,7 +1341,9 @@ void addEscapeSlashes(std::string& str) {
   }
 }
 
-void writeOutputData(const ConverterState& converterState) {
+void writeOutputData(const std::unordered_map<std::string, AssetBakeCachedItem>& oldCache, const ConverterState& converterState) {
+  // TODO: The cache interferes with this functionality. Include the cache into writing the output data
+
   if(!fs::is_directory(converterState.outputFileDir)) {
     fs::create_directory(converterState.outputFileDir);
   }
@@ -1288,14 +1362,37 @@ void writeOutputData(const ConverterState& converterState) {
     replace(fileName, tokensToReplace, ArrayCount(tokensToReplace), '_');
     std::string filePath = path.string();
     addEscapeSlashes(filePath);
-    if(strcmp(extension, extensions.texture) == 0) {
+    if(strcmp(extension, bakedExtensions.texture) == 0) {
       outTexturesFile << "BakedTexture(" << fileName << ",\"" << filePath << "\")\n";
-    } else if(strcmp(extension, extensions.material) == 0) {
+    } else if(strcmp(extension, bakedExtensions.material) == 0) {
       outMaterialFile << "BakedMaterial(" << fileName << ",\"" << filePath << "\")\n";
-    } else if(strcmp(extension, extensions.mesh) == 0) {
+    } else if(strcmp(extension, bakedExtensions.mesh) == 0) {
       outMeshFile << "BakedMesh(" << fileName << ",\"" << filePath << "\")\n";
-    } else if(strcmp(extension, extensions.prefab) == 0) {
+    } else if(strcmp(extension, bakedExtensions.prefab) == 0) {
       outPrefabFile << "BakedPrefab(" << fileName << ",\"" << filePath << "\")\n";
+    }
+  }
+
+  for(auto [originalFileName, cachedItem] : oldCache) {
+    u32 cachedBakedFileCount = (u32)cachedItem.bakedFiles.size();
+    for(u32 i = 0; i < cachedBakedFileCount; i++) {
+      const BakedFile& bakedFile = cachedItem.bakedFiles[i];
+      std::string extensionStr = bakedFile.ext;
+      const char* extension = extensionStr.c_str();
+      std::string fileName = std::string(bakedFile.name.begin(), bakedFile.name.end() - bakedFile.ext.size());
+      const char tokensToReplace[] = {'.', '-'};
+      replace(fileName, tokensToReplace, ArrayCount(tokensToReplace), '_');
+      std::string filePath = bakedFile.path;
+      addEscapeSlashes(filePath);
+      if(strcmp(extension, bakedExtensions.texture) == 0) {
+        outTexturesFile << "BakedTexture(" << fileName << ",\"" << filePath << "\")\n";
+      } else if(strcmp(extension, bakedExtensions.material) == 0) {
+        outMaterialFile << "BakedMaterial(" << fileName << ",\"" << filePath << "\")\n";
+      } else if(strcmp(extension, bakedExtensions.mesh) == 0) {
+        outMeshFile << "BakedMesh(" << fileName << ",\"" << filePath << "\")\n";
+      } else if(strcmp(extension, bakedExtensions.prefab) == 0) {
+        outPrefabFile << "BakedPrefab(" << fileName << ",\"" << filePath << "\")\n";
+      }
     }
   }
 

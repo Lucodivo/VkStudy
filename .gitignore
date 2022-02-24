@@ -8,3 +8,6 @@
 /shaders/spv
 CMakeSettings.json
 cmake*/
+Asset-Baker-Cache.asb
+scratch.txt
+imgui.ini
