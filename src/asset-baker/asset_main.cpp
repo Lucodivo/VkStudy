@@ -590,22 +590,24 @@ bool extractGltfCombinedMesh(tinygltf::Model& gltfModel, const fs::path& filePat
   VertexFormat vertexFormat = assets::VertexFormat::PNCV_F32;
 
   struct gltfAttributeMetadata {
-    u32 accessorIndex;
-    u32 numComponents;
-    u32 bufferViewIndex;
-    u32 bufferIndex;
-    u64 bufferByteOffset;
-    u64 bufferByteLength;
+    s32 accessorIndex;
+    s32 numComponents;
+    s32 bufferViewIndex;
+    s32 bufferIndex;
+    size_t bufferByteOffset;
+    size_t bufferByteLength;
   };
 
   auto populateAttributeMetadata = [](const tinygltf::Model& model, const char* keyString, const tinygltf::Primitive& gltfPrimitive) -> gltfAttributeMetadata {
     gltfAttributeMetadata result{};
     result.accessorIndex = gltfPrimitive.attributes.at(keyString);
-    result.numComponents = tinygltf::GetNumComponentsInType(model.accessors[result.accessorIndex].type);
-    result.bufferViewIndex = model.accessors[result.accessorIndex].bufferView;
-    result.bufferIndex = model.bufferViews[result.bufferViewIndex].buffer;
-    result.bufferByteOffset = model.bufferViews[result.bufferViewIndex].byteOffset;
-    result.bufferByteLength = model.bufferViews[result.bufferViewIndex].byteLength;
+    const tinygltf::Accessor& accessor = model.accessors[result.accessorIndex];
+    result.numComponents = tinygltf::GetNumComponentsInType(accessor.type);
+    result.bufferViewIndex = accessor.bufferView;
+    const tinygltf::BufferView& bufferView = model.bufferViews[result.bufferViewIndex];
+    result.bufferIndex = bufferView.buffer;
+    result.bufferByteOffset = bufferView.byteOffset;
+    result.bufferByteLength = bufferView.byteLength;
     return result;
   };
 
@@ -617,55 +619,85 @@ bool extractGltfCombinedMesh(tinygltf::Model& gltfModel, const fs::path& filePat
   const u32 texture0AttributeIndex = 2;
 
   std::vector<Vertex> vertices;
-  std::vector<u32> indices; // TODO: indices
+  std::vector<u32> indices;
 
   u64 meshCount = gltfModel.meshes.size();
   Assert(meshCount > 0);
-  std::vector<tinygltf::Accessor>* gltfAccessors = &gltfModel.accessors;
-  std::vector<tinygltf::BufferView>* gltfBufferViews = &gltfModel.bufferViews;
+  const std::vector<tinygltf::Accessor>& gltfAccessors = gltfModel.accessors;
+  const std::vector<tinygltf::BufferView>& gltfBufferViews = gltfModel.bufferViews;
+  const u64 bufferCount = gltfModel.buffers.size();
+
+  struct UniqueVert {
+    u32 positionBufferOffset;
+    u32 normalBufferOffset;
+    u32 texCoordBufferOffset;
+    s32 positionBufferIndex;
+    s32 normalBufferIndex;
+    s32 texCoordBufferIndex;
+    s32 materialIndex;
+  };
+
+  auto indexHashLambda = [=](const UniqueVert& uniqueVert) {
+    size_t hashVal = uniqueVert.positionBufferOffset;
+    hashVal += uniqueVert.normalBufferOffset << 16;
+    hashVal += uniqueVert.texCoordBufferOffset << 32;
+    hashVal += uniqueVert.positionBufferIndex << 48;
+    hashVal += uniqueVert.normalBufferIndex << 52;
+    hashVal += uniqueVert.texCoordBufferIndex << 56;
+    hashVal += uniqueVert.materialIndex << 60;
+    return hashVal;
+  };
+  auto indexEqualsLambda = [=](const UniqueVert& A, const UniqueVert& B) {
+    return A.positionBufferOffset == B.positionBufferOffset &&
+           A.normalBufferOffset == B.normalBufferOffset &&
+           A.texCoordBufferOffset == B.texCoordBufferOffset &&
+           A.positionBufferIndex == B.positionBufferIndex &&
+           A.normalBufferIndex == B.normalBufferIndex &&
+           A.texCoordBufferIndex == B.texCoordBufferIndex &&
+           A.materialIndex == B.materialIndex;
+  };
+  std::unordered_map<UniqueVert, u32 /*vertIndex*/, decltype(indexHashLambda), decltype(indexEqualsLambda)> cachedIndexValues(100'000, indexHashLambda, indexEqualsLambda);
+
   for(u32 gltfMeshIndex = 0; gltfMeshIndex < meshCount; gltfMeshIndex++) {
     tinygltf::Mesh& gltfMesh = gltfModel.meshes[gltfMeshIndex];
     u64 primitiveCount = gltfMesh.primitives.size();
-    Assert(primitiveCount > 0);
+    cachedIndexValues.clear(); // Vertices should not be the same between meshes
     for(u32 gltfPrimitiveIndex = 0; gltfPrimitiveIndex < primitiveCount; gltfPrimitiveIndex++) {
       tinygltf::Primitive& gltfPrimitive = gltfMesh.primitives[gltfPrimitiveIndex];
       Assert(gltfPrimitive.indices > -1);
 
       // indices data
       u32 indicesAccessorIndex = gltfPrimitive.indices;
-      tinygltf::BufferView indicesGLTFBufferView = gltfBufferViews->at(gltfAccessors->at(indicesAccessorIndex).bufferView);
+      const tinygltf::Accessor& indicesAccessor = gltfModel.accessors[indicesAccessorIndex];
+      const tinygltf::BufferView& indicesGLTFBufferView = gltfBufferViews[indicesAccessor.bufferView];
       u32 indicesGLTFBufferIndex = indicesGLTFBufferView.buffer;
       u64 indicesGLTFBufferByteOffset = indicesGLTFBufferView.byteOffset;
       u64 indicesGLTFBufferByteLength = indicesGLTFBufferView.byteLength;
-      u16* indicesDataOffset = (u16*)(gltfModel.buffers[indicesGLTFBufferIndex].data.data() + indicesGLTFBufferByteOffset);
+      u16* indexValues = (u16*)(gltfModel.buffers[indicesGLTFBufferIndex].data.data() + indicesGLTFBufferByteOffset);
 
       // position attributes
       Assert(gltfPrimitive.attributes.find(positionAttrKeyString) != gltfPrimitive.attributes.end());
       gltfAttributeMetadata positionAttribute = populateAttributeMetadata(gltfModel, positionAttrKeyString, gltfPrimitive);
-      Assert(positionAttribute.numComponents == 3);
+      f32* positionAttributeValues = (f32*)(gltfModel.buffers[positionAttribute.bufferIndex].data.data());
+      u32 positionAttributeOffset = positionAttribute.bufferByteOffset / sizeof(f32);
 
       // normal attributes
       bool normalAttributesAvailable = gltfPrimitive.attributes.find(normalAttrKeyString) != gltfPrimitive.attributes.end();
-      Assert(normalAttributesAvailable);
-      gltfAttributeMetadata normalAttribute{};
-      normalAttribute = populateAttributeMetadata(gltfModel, normalAttrKeyString, gltfPrimitive);
-      Assert(positionAttribute.bufferIndex == normalAttribute.bufferIndex);
-      Assert(normalAttribute.numComponents == 3);
+      Assert(normalAttributesAvailable); // TODO: Calc normals if not available?
+      gltfAttributeMetadata normalAttribute = populateAttributeMetadata(gltfModel, normalAttrKeyString, gltfPrimitive);
+      f32* normalAttributeValues = (f32*)(gltfModel.buffers[normalAttribute.bufferIndex].data.data());
+      u32 normalAttributeOffset = normalAttribute.bufferByteOffset / sizeof(f32);
 
       // texture 0 uv coord attribute data
       bool texture0AttributesAvailable = gltfPrimitive.attributes.find(texture0AttrKeyString) != gltfPrimitive.attributes.end();
       gltfAttributeMetadata texture0Attribute{};
-      f32* texture0AttributeData;
+      f32* texture0AttributeValues = nullptr;
+      u32 texture0AttributeOffset = 0;
       if(texture0AttributesAvailable) {
         texture0Attribute = populateAttributeMetadata(gltfModel, texture0AttrKeyString, gltfPrimitive);
-        texture0AttributeData = (f32*)(gltfModel.buffers[texture0Attribute.bufferIndex].data.data() + texture0Attribute.bufferByteOffset);
-        Assert(positionAttribute.bufferIndex == texture0Attribute.bufferIndex);
+        texture0AttributeValues = (f32*)(gltfModel.buffers[texture0Attribute.bufferIndex].data.data());
+        texture0AttributeOffset = texture0Attribute.bufferByteOffset / sizeof(f32);
       }
-
-      Assert(gltfModel.buffers.size() > positionAttribute.bufferIndex);
-      f32* positionAttributeData = (f32*)(gltfModel.buffers[positionAttribute.bufferIndex].data.data() + positionAttribute.bufferByteOffset);
-      f32* normalAttributeData = (f32*)(gltfModel.buffers[normalAttribute.bufferIndex].data.data() + normalAttribute.bufferByteOffset);
-      Assert(positionAttribute.bufferByteLength == normalAttribute.bufferByteLength);
 
       tinygltf::Material gltfMaterial = gltfModel.materials[gltfPrimitive.material];
       f64* baseColor = gltfMaterial.pbrMetallicRoughness.baseColorFactor.data();
@@ -673,19 +705,35 @@ bool extractGltfCombinedMesh(tinygltf::Model& gltfModel, const fs::path& filePat
       u64 indexCount = indicesGLTFBufferByteLength / sizeof(u16);
       u64 vertexCount = positionAttribute.bufferByteLength / positionAttribute.numComponents / sizeof(f32);
       for(u32 gltfVertexIndex = 0; gltfVertexIndex < indexCount; gltfVertexIndex++) {
-        u16 vertIndex = indicesDataOffset[gltfVertexIndex];
+
+        u16 vertIndex = indexValues[gltfVertexIndex];
+
+        UniqueVert vertIndexInfo{};
+        vertIndexInfo.positionBufferOffset = positionAttributeOffset + (3 * vertIndex);
+        vertIndexInfo.normalBufferOffset = normalAttributeOffset + (3 * vertIndex);
+        vertIndexInfo.texCoordBufferOffset = texture0AttributeOffset + (2 * vertIndex);
+        vertIndexInfo.positionBufferIndex = positionAttribute.bufferIndex;
+        vertIndexInfo.normalBufferIndex = normalAttribute.bufferIndex;
+        vertIndexInfo.texCoordBufferIndex = texture0Attribute.bufferIndex;
+        vertIndexInfo.materialIndex = gltfPrimitive.material;
+
+        auto cachedVertex = cachedIndexValues.find(vertIndexInfo);
+        if(cachedVertex != cachedIndexValues.end()) {
+          indices.push_back(cachedVertex->second);
+          continue;
+        }
 
         Vertex newVert{};
 
         //vertex position
-        newVert.position[0] = positionAttributeData[3 * vertIndex + 0];
-        newVert.position[1] = positionAttributeData[3 * vertIndex + 1];
-        newVert.position[2] = positionAttributeData[3 * vertIndex + 2];
+        newVert.position[0] = positionAttributeValues[vertIndexInfo.positionBufferOffset + 0];
+        newVert.position[1] = positionAttributeValues[vertIndexInfo.positionBufferOffset + 1];
+        newVert.position[2] = positionAttributeValues[vertIndexInfo.positionBufferOffset + 2];
 
         //vertex normal
-        newVert.normal[0] = normalAttributeData[3 * vertIndex + 0];
-        newVert.normal[1] = normalAttributeData[3 * vertIndex + 1];
-        newVert.normal[2] = normalAttributeData[3 * vertIndex + 2];
+        newVert.normal[0] = normalAttributeValues[vertIndexInfo.normalBufferOffset + 0];
+        newVert.normal[1] = normalAttributeValues[vertIndexInfo.normalBufferOffset + 1];
+        newVert.normal[2] = normalAttributeValues[vertIndexInfo.normalBufferOffset + 2];
 
         //vertex color
         newVert.color[0] = (f32)baseColor[0];
@@ -694,14 +742,18 @@ bool extractGltfCombinedMesh(tinygltf::Model& gltfModel, const fs::path& filePat
 
         // vertex uv
         if(texture0AttributesAvailable) {
-          newVert.uv[0] = texture0AttributeData[2 * vertIndex + 0];
-          newVert.uv[1] = 1.0f - texture0AttributeData[2 * vertIndex + 1]; // TODO: is inverse uv y coord necessary?
+          newVert.uv[0] = texture0AttributeValues[vertIndexInfo.texCoordBufferOffset + 0];
+          newVert.uv[1] = 1.0f - texture0AttributeValues[vertIndexInfo.texCoordBufferOffset + 1]; // TODO: is inverse uv y coord necessary?
         } else {
           newVert.uv[0] = 0.5f;
           newVert.uv[1] = 0.5f;
         }
 
         vertices.push_back(newVert);
+        u32 newVertIndex = (u32)(vertices.size() - 1);
+        indices.push_back(newVertIndex);
+        std::pair<UniqueVert, u32> newCachedVertex = {vertIndexInfo, newVertIndex };
+        cachedIndexValues.insert(newCachedVertex);
       }
     }
   }

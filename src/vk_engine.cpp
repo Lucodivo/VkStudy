@@ -197,7 +197,7 @@ void VulkanEngine::processInput() {
 }
 
 void VulkanEngine::quickDebugText(const char* fmt, ...) const {
-  if(imguiState.showGeneralDebug) {
+  if(imguiState.showQuickDebug) {
     va_list args;
     va_start(args, fmt);
     ImGui::TextV(fmt, args);
@@ -206,13 +206,13 @@ void VulkanEngine::quickDebugText(const char* fmt, ...) const {
 }
 
 void VulkanEngine::quickDebugFloat(const char* label, float* v, float v_min, float v_max, const char* format, ImGuiSliderFlags flags) const {
-  if(imguiState.showGeneralDebug) {
+  if(imguiState.showQuickDebug) {
     ImGui::SliderFloat(label, v, v_min, v_max, format, flags);
   }
 }
 
 void VulkanEngine::update() {
-  local_access f32 moveSpeed = 0.2f;
+  local_access f32 moveSpeed = 0.5f;
   local_access f32 turnSpeed = 0.5f;
   local_access bool editMode = true; // NOTE: We assume edit mode is enabled by default
   local_access bool fullscreened = false; // NOTE: We assume windowed by default
@@ -901,55 +901,55 @@ void VulkanEngine::initScene() {
   };
 
   // Renderables //
-//  // Mr. Saturn
-//	RenderObject mrSaturnObject;
-//  mrSaturnObject.mesh = getMesh(bakedMeshAssetData.mr_saturn.name);
-//  mrSaturnObject.materialName = materialDefaultLit.name;
-//  mrSaturnObject.material = getMaterial(mrSaturnObject.materialName);
-//	f32 mrSaturnScale = 20.0f;
-//	mat4 mrSaturnScaleMat = scale_mat4(vec3{mrSaturnScale, mrSaturnScale, mrSaturnScale});
-//	mat4 mrSaturnTranslationMat = translate_mat4(vec3{0.0f, 0.0f, -mrSaturnScale * 2.0f});
-//	mat4 mrSaturnTransform = mrSaturnTranslationMat * mrSaturnScaleMat;
-//  mrSaturnObject.modelMatrix = mrSaturnTransform;
-//  mrSaturnObject.defaultColor = vec4{155.0f / 255.0f, 115.0f / 255.0f, 96.0f / 255.0f, 1.0f};
-//  attachTexture(blockySampler, bakedTextureAssetData.single_white_pixel.name, &mrSaturnObject.textureSet);
-//	renderables.push_back(mrSaturnObject);
-//
-//  // Cubes //
-//	RenderObject cubeObject;
-//  cubeObject.mesh = getMesh(bakedMeshAssetData.cube.name);
-//  cubeObject.materialName = materialDefaulColor.name;
-//  cubeObject.material = getMaterial(cubeObject.materialName);
-//  attachTexture(blockySampler, bakedTextureAssetData.single_white_pixel.name, &cubeObject.textureSet);
-//	f32 envScale = 0.2f;
-//	mat4 envScaleMat = scale_mat4(vec3{envScale, envScale, envScale});
-//	for (s32 x = -16; x <= 16; ++x)
-//	for (s32 y = -16; y <= 16; ++y)
-//	for (s32 z = 0; z <= 32; ++z) {
-//		vec3 pos{ (f32)x, (f32)y, (f32)z };
-//		vec3 color = (pos + vec3{16.0f, 16.0f, 0.0f}) / vec3{32.0f, 32.0f, 32.0f};
-//		mat4 translationMat = translate_mat4(pos);
-//    cubeObject.modelMatrix = translationMat * envScaleMat;
-//    cubeObject.defaultColor = vec4{color.r, color.g, color.b, 1.0f}; // TODO: lookup how glm accomplishes vec4{vec3, f32} construction
-//		renderables.push_back(cubeObject);
-//	}
+  // Mr. Saturn
+	RenderObject mrSaturnObject;
+  mrSaturnObject.mesh = getMesh(bakedMeshAssetData.mr_saturn.name);
+  mrSaturnObject.materialName = materialDefaultLit.name;
+  mrSaturnObject.material = getMaterial(mrSaturnObject.materialName);
+	f32 mrSaturnScale = 20.0f;
+	mat4 mrSaturnScaleMat = scale_mat4(vec3{mrSaturnScale, mrSaturnScale, mrSaturnScale});
+	mat4 mrSaturnTranslationMat = translate_mat4(vec3{0.0f, 0.0f, -mrSaturnScale * 2.0f});
+	mat4 mrSaturnTransform = mrSaturnTranslationMat * mrSaturnScaleMat;
+  mrSaturnObject.modelMatrix = mrSaturnTransform;
+  mrSaturnObject.defaultColor = vec4{155.0f / 255.0f, 115.0f / 255.0f, 96.0f / 255.0f, 1.0f};
+  attachTexture(blockySampler, bakedTextureAssetData.single_white_pixel.name, &mrSaturnObject.textureSet);
+	renderables.push_back(mrSaturnObject);
+
+  // Cubes //
+	RenderObject cubeObject;
+  cubeObject.mesh = getMesh(bakedMeshAssetData.cube.name);
+  cubeObject.materialName = materialDefaulColor.name;
+  cubeObject.material = getMaterial(cubeObject.materialName);
+  attachTexture(blockySampler, bakedTextureAssetData.single_white_pixel.name, &cubeObject.textureSet);
+	f32 envScale = 0.2f;
+	mat4 envScaleMat = scale_mat4(vec3{envScale, envScale, envScale});
+	for (s32 x = -16; x <= 16; ++x)
+	for (s32 y = -16; y <= 16; ++y)
+	for (s32 z = 0; z <= 32; ++z) {
+		vec3 pos{ (f32)x, (f32)y, (f32)z };
+		vec3 color = (pos + vec3{16.0f, 16.0f, 0.0f}) / vec3{32.0f, 32.0f, 32.0f};
+		mat4 translationMat = translate_mat4(pos);
+    cubeObject.modelMatrix = translationMat * envScaleMat;
+    cubeObject.defaultColor = vec4{color.r, color.g, color.b, 1.0f}; // TODO: lookup how glm accomplishes vec4{vec3, f32} construction
+		renderables.push_back(cubeObject);
+	}
 
   // Minecraft World
-  RenderObject minecraftObject;
-  minecraftObject.mesh = getMesh(bakedMeshAssetData.lost_empire.name);
-  minecraftObject.materialName = materialTextured.name;
-  minecraftObject.material = getMaterial(minecraftObject.materialName);
-  minecraftObject.defaultColor = vec4{50.0f, 0.0f, 0.0f, 1.0f};
-  attachTexture(blockySampler, bakedTextureAssetData.lost_empire_RGBA.name, &minecraftObject.textureSet);
-
-  f32 minecraftScale = 1.0f;
-  mat4 minecraftScaleMat = scale_mat4(vec3{minecraftScale, minecraftScale, minecraftScale});
-  mat4 minecraftRotationMat = rotate_mat4(RadiansPerDegree * 90.0f, vec3{1.0f, 0.0f, 0.0f});
-  mat4 minecraftTranslationMat = translate_mat4(vec3{0.0f, 0.0f, 0.0f});
-  mat4 minecraftTransform = minecraftTranslationMat * minecraftRotationMat * minecraftScaleMat;
-  minecraftObject.modelMatrix = minecraftTransform;
-
-  renderables.push_back(minecraftObject);
+//  RenderObject minecraftObject;
+//  minecraftObject.mesh = getMesh(bakedMeshAssetData.lost_empire.name);
+//  minecraftObject.materialName = materialTextured.name;
+//  minecraftObject.material = getMaterial(minecraftObject.materialName);
+//  minecraftObject.defaultColor = vec4{50.0f, 0.0f, 0.0f, 1.0f};
+//  attachTexture(blockySampler, bakedTextureAssetData.lost_empire_RGBA.name, &minecraftObject.textureSet);
+//
+//  f32 minecraftScale = 1.0f;
+//  mat4 minecraftScaleMat = scale_mat4(vec3{minecraftScale, minecraftScale, minecraftScale});
+//  mat4 minecraftRotationMat = rotate_mat4(RadiansPerDegree * 90.0f, vec3{1.0f, 0.0f, 0.0f});
+//  mat4 minecraftTranslationMat = translate_mat4(vec3{0.0f, 0.0f, 0.0f});
+//  mat4 minecraftTransform = minecraftTranslationMat * minecraftRotationMat * minecraftScaleMat;
+//  minecraftObject.modelMatrix = minecraftTransform;
+//
+//  renderables.push_back(minecraftObject);
 
   // TODO: sort objects by material to minimize binding pipelines
   //std::sort(renderables.begin(), renderables.end(), [](const RenderObject& a, const RenderObject& b) {
@@ -1235,7 +1235,8 @@ void VulkanEngine::startImguiFrame() {
   if(imguiState.showMainMenu) {
     if(ImGui::BeginMainMenuBar()) {
       if(ImGui::BeginMenu("Windows")) {
-        ImGui::MenuItem("Quick Debug Log", NULL, &imguiState.showGeneralDebug);
+        ImGui::MenuItem("Quick Debug Log", NULL, &imguiState.showQuickDebug);
+        ImGui::MenuItem("General Debug Text", NULL, &imguiState.showGeneralDebugText);
         ImGui::MenuItem("Main Debug Menu", NULL, &imguiState.showMainMenu);
         ImGui::MenuItem("FPS", NULL, &imguiState.showFPS);
         ImGui::EndMenu();
@@ -1243,7 +1244,7 @@ void VulkanEngine::startImguiFrame() {
     }
   }
 
-  imguiTextWindow("General Debug", imguiState.stringRingBuffer, imguiState.showGeneralDebug);
+  imguiTextWindow("General Debug", imguiState.stringRingBuffer, imguiState.showGeneralDebugText);
 
   local_access Timer frameTimer;
   f64 frameTimeMs = StopTimer(frameTimer); // for last frame

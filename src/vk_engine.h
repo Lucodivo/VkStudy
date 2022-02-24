@@ -143,7 +143,8 @@ public:
   UploadContext uploadContext;
 
   struct {
-    bool showGeneralDebug;
+    bool showGeneralDebugText;
+    bool showQuickDebug;
     bool showMainMenu;
     bool showFPS;
     CStringRingBuffer stringRingBuffer;
