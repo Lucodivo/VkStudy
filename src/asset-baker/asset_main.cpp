@@ -63,13 +63,13 @@ struct ConverterState {
   fs::path convertToExportRelative(const fs::path& path) const;
 };
 
-struct BakedFile {
-  std::string path;
-  std::string ext;
-  std::string name;
-};
-
 struct AssetBakeCachedItem {
+  struct BakedFile {
+    std::string path;
+    std::string ext;
+    std::string name;
+  };
+
   std::string originalFileName;
   f64 originalFileLastModified;
   std::vector<BakedFile> bakedFiles;
@@ -96,7 +96,8 @@ void saveCache(const std::unordered_map<std::string, AssetBakeCachedItem>& oldCa
 void loadCache(std::unordered_map<std::string, AssetBakeCachedItem>& assetBakeCache);
 
 void writeOutputData(const std::unordered_map<std::string, AssetBakeCachedItem>& oldCache, const ConverterState& converterState);
-void replace(std::string& str, const char* oldTokens, u32 oldTokensCount, char newToken);
+void replace(std::string& str, const char oldToken, const char newToken);
+void replaceBackSlashes(std::string& str);
 std::size_t fileCountInDir(fs::path dirPath);
 
 f64 lastModifiedTimeStamp(const fs::path& file) {
@@ -135,7 +136,7 @@ void saveCache(const std::unordered_map<std::string, AssetBakeCachedItem>& oldCa
     u32 bakedFileCount = (u32)oldCacheItem.bakedFiles.size();
     for(u32 i = 0; i < bakedFileCount; i++) {
       nlohmann::json newCacheBakedFile;
-      const BakedFile& bakedFile = oldCacheItem.bakedFiles[i];
+      const AssetBakeCachedItem::BakedFile& bakedFile = oldCacheItem.bakedFiles[i];
       newCacheBakedFile[cacheJsonStrings.filePath] = bakedFile.path;
       newCacheBakedFile[cacheJsonStrings.fileName] = bakedFile.name;
       newCacheBakedFile[cacheJsonStrings.fileExt] = bakedFile.ext;
@@ -152,7 +153,7 @@ void saveCache(const std::unordered_map<std::string, AssetBakeCachedItem>& oldCa
     u32 bakedFileCount = (u32)newCacheItem.bakedFiles.size();
     for(u32 i = 0; i < bakedFileCount; i++) {
       nlohmann::json newCacheBakedFile;
-      const BakedFile& bakedFile = newCacheItem.bakedFiles[i];
+      const AssetBakeCachedItem::BakedFile& bakedFile = newCacheItem.bakedFiles[i];
       newCacheBakedFile[cacheJsonStrings.filePath] = bakedFile.path;
       newCacheBakedFile[cacheJsonStrings.fileName] = bakedFile.name;
       newCacheBakedFile[cacheJsonStrings.fileExt] = bakedFile.ext;
@@ -186,7 +187,7 @@ void loadCache(std::unordered_map<std::string, AssetBakeCachedItem>& assetBakeCa
     u32 bakedFileCount = (u32)element[cacheJsonStrings.bakedFiles].size();
     for(u32 i = 0; i < bakedFileCount; i++) {
       nlohmann::json bakedFileJson = element[cacheJsonStrings.bakedFiles][i];
-      BakedFile bakedFile;
+      AssetBakeCachedItem::BakedFile bakedFile;
       bakedFile.path = bakedFileJson[cacheJsonStrings.filePath];
       bakedFile.name = bakedFileJson[cacheJsonStrings.fileName];
       bakedFile.ext = bakedFileJson[cacheJsonStrings.fileExt];
@@ -320,7 +321,7 @@ int main(int argc, char* argv[]) {
     u32 newlyConvertedItemCount = convertedFilesCount - convertedFilesCountBefore;
     for(u32 i = 0; i < newlyConvertedItemCount; i++) {
       const fs::path& recentlyBakedFile = converterState.bakedFilePaths[convertedFilesCount - i - 1];
-      BakedFile bakedFile;
+      AssetBakeCachedItem::BakedFile bakedFile;
       bakedFile.path = recentlyBakedFile.string();
       bakedFile.name = recentlyBakedFile.filename().string();
       bakedFile.ext = recentlyBakedFile.extension().string();
@@ -702,19 +703,11 @@ bool extractGltfCombinedMesh(tinygltf::Model& gltfModel, const fs::path& filePat
   };
 
   auto indexHashLambda = [=](const UniqueVert& uniqueVert) {
+    // Note: We're making assumptions that offsets are rarely over 2^16(~65'000)
     u64 hashVal = uniqueVert.positionBufferOffset;
-    hashVal = hashVal << 16;
-    hashVal += uniqueVert.normalBufferOffset;
-    hashVal = hashVal << 16;
+    hashVal +=  (uniqueVert.normalBufferOffset << 16);
+    hashVal = (hashVal << 16);
     hashVal += uniqueVert.texCoordBufferOffset;
-    hashVal = hashVal << 4;
-    hashVal += uniqueVert.positionBufferIndex;
-    hashVal = hashVal << 4;
-    hashVal += uniqueVert.normalBufferIndex;
-    hashVal = hashVal << 4;
-    hashVal += uniqueVert.texCoordBufferIndex;
-    hashVal = hashVal << 4;
-    hashVal += uniqueVert.materialIndex;
     return hashVal;
   };
   auto indexEqualsLambda = [=](const UniqueVert& A, const UniqueVert& B) {
@@ -731,7 +724,7 @@ bool extractGltfCombinedMesh(tinygltf::Model& gltfModel, const fs::path& filePat
   for(u32 gltfMeshIndex = 0; gltfMeshIndex < meshCount; gltfMeshIndex++) {
     tinygltf::Mesh& gltfMesh = gltfModel.meshes[gltfMeshIndex];
     u64 primitiveCount = gltfMesh.primitives.size();
-    cachedIndexValues.clear(); // Vertices should not be the same between meshes
+    cachedIndexValues.clear(); // Not allowing vertices to be shared across meshes
     for(u32 gltfPrimitiveIndex = 0; gltfPrimitiveIndex < primitiveCount; gltfPrimitiveIndex++) {
       tinygltf::Primitive& gltfPrimitive = gltfMesh.primitives[gltfPrimitiveIndex];
       Assert(gltfPrimitive.indices > -1);
@@ -1312,32 +1305,11 @@ void replace(std::string& str, const char* oldTokens, u32 oldTokensCount, char n
   }
 }
 
-void addEscapeSlashes(std::string& str) {
-  u32 originalStrLength = (u32)str.size();
-
-  std::vector<u32> escapeSlashIndices;
-  escapeSlashIndices.reserve(originalStrLength / 2);
-
-  u32 slashCount = 0;
-  for(u32 i = 0; i < originalStrLength; i++) {
-    char& c = str[i];
+void replaceBackSlashes(std::string& str) {
+  for(char& c: str) {
     if(c == '\\') {
-      escapeSlashIndices.push_back(i);
-      slashCount++;
+      c = '/';
     }
-  }
-
-  u32 newStrLength = originalStrLength + slashCount;
-  str.resize(newStrLength);
-
-  u32 newStrIter = newStrLength - 1;
-  u32 oldStrIter = originalStrLength - 1;
-  while(slashCount > 0) {
-    if(str[oldStrIter] == '\\') {
-      str[newStrIter--] = '\\';
-      slashCount--;
-    }
-    str[newStrIter--] = str[oldStrIter--];
   }
 }
 
@@ -1354,45 +1326,36 @@ void writeOutputData(const std::unordered_map<std::string, AssetBakeCachedItem>&
   outMaterialFile.open((converterState.outputFileDir / "baked_materials.incl").string(), std::ios::out);
   outPrefabFile.open((converterState.outputFileDir / "baked_prefabs.incl").string(), std::ios::out);
 
+  auto write = [&](std::string bakedPath, std::string originalFileName, const char* fileExt) {
+    const char tokensToReplace[] = {'.', '-'};
+    replace(originalFileName, tokensToReplace, ArrayCount(tokensToReplace), '_');
+    replaceBackSlashes(bakedPath);
+    if(strcmp(fileExt, bakedExtensions.texture) == 0) {
+      outTexturesFile << "BakedTexture(" << originalFileName << ",\"" << bakedPath << "\")\n";
+    } else if(strcmp(fileExt, bakedExtensions.material) == 0) {
+      outMaterialFile << "BakedMaterial(" << originalFileName << ",\"" << bakedPath << "\")\n";
+    } else if(strcmp(fileExt, bakedExtensions.mesh) == 0) {
+      outMeshFile << "BakedMesh(" << originalFileName << ",\"" << bakedPath << "\")\n";
+    } else if(strcmp(fileExt, bakedExtensions.prefab) == 0) {
+      outPrefabFile << "BakedPrefab(" << originalFileName << ",\"" << bakedPath << "\")\n";
+    }
+  };
+
   for(const fs::path& path: converterState.bakedFilePaths) {
     std::string extensionStr = path.extension().string();
-    const char* extension = extensionStr.c_str();
     std::string fileName = path.filename().replace_extension("").string();
-    const char tokensToReplace[] = {'.', '-'};
-    replace(fileName, tokensToReplace, ArrayCount(tokensToReplace), '_');
     std::string filePath = path.string();
-    addEscapeSlashes(filePath);
-    if(strcmp(extension, bakedExtensions.texture) == 0) {
-      outTexturesFile << "BakedTexture(" << fileName << ",\"" << filePath << "\")\n";
-    } else if(strcmp(extension, bakedExtensions.material) == 0) {
-      outMaterialFile << "BakedMaterial(" << fileName << ",\"" << filePath << "\")\n";
-    } else if(strcmp(extension, bakedExtensions.mesh) == 0) {
-      outMeshFile << "BakedMesh(" << fileName << ",\"" << filePath << "\")\n";
-    } else if(strcmp(extension, bakedExtensions.prefab) == 0) {
-      outPrefabFile << "BakedPrefab(" << fileName << ",\"" << filePath << "\")\n";
-    }
+    write(filePath, fileName, extensionStr.c_str());
   }
 
   for(auto [originalFileName, cachedItem] : oldCache) {
     u32 cachedBakedFileCount = (u32)cachedItem.bakedFiles.size();
     for(u32 i = 0; i < cachedBakedFileCount; i++) {
-      const BakedFile& bakedFile = cachedItem.bakedFiles[i];
+      const AssetBakeCachedItem::BakedFile& bakedFile = cachedItem.bakedFiles[i];
       std::string extensionStr = bakedFile.ext;
-      const char* extension = extensionStr.c_str();
       std::string fileName = std::string(bakedFile.name.begin(), bakedFile.name.end() - bakedFile.ext.size());
-      const char tokensToReplace[] = {'.', '-'};
-      replace(fileName, tokensToReplace, ArrayCount(tokensToReplace), '_');
       std::string filePath = bakedFile.path;
-      addEscapeSlashes(filePath);
-      if(strcmp(extension, bakedExtensions.texture) == 0) {
-        outTexturesFile << "BakedTexture(" << fileName << ",\"" << filePath << "\")\n";
-      } else if(strcmp(extension, bakedExtensions.material) == 0) {
-        outMaterialFile << "BakedMaterial(" << fileName << ",\"" << filePath << "\")\n";
-      } else if(strcmp(extension, bakedExtensions.mesh) == 0) {
-        outMeshFile << "BakedMesh(" << fileName << ",\"" << filePath << "\")\n";
-      } else if(strcmp(extension, bakedExtensions.prefab) == 0) {
-        outPrefabFile << "BakedPrefab(" << fileName << ",\"" << filePath << "\")\n";
-      }
+      write(filePath, fileName, extensionStr.c_str());
     }
   }
 
