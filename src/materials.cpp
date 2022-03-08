@@ -1,28 +1,6 @@
 
 #include "materials.h"
 
-VkDescriptorSetLayoutCreateInfo DescriptorSetLayoutData::descriptorSetLayoutCreateInfo() {
-  VkDescriptorSetLayoutCreateInfo descriptorSetLayoutCreateInfo{};
-  descriptorSetLayoutCreateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-  descriptorSetLayoutCreateInfo.pNext = nullptr;
-  descriptorSetLayoutCreateInfo.flags = 0;
-  descriptorSetLayoutCreateInfo.bindingCount = static_cast<u32>(bindings.size());
-  descriptorSetLayoutCreateInfo.pBindings = bindings.data();
-  return descriptorSetLayoutCreateInfo;
-}
-
-VkPipelineVertexInputStateCreateInfo ShaderInputMetadata::vertexInputStateCreateInfo() {
-  VkPipelineVertexInputStateCreateInfo vertexInputStateCreateInfo{};
-  vertexInputStateCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
-  vertexInputStateCreateInfo.pNext = nullptr;
-  vertexInputStateCreateInfo.flags = 0;
-  vertexInputStateCreateInfo.vertexBindingDescriptionCount = 1;
-  vertexInputStateCreateInfo.pVertexBindingDescriptions = &vertexInputDesc.bindingDesc;
-  vertexInputStateCreateInfo.vertexAttributeDescriptionCount = static_cast<u32>(vertexInputDesc.attributes.size());
-  vertexInputStateCreateInfo.pVertexAttributeDescriptions = vertexInputDesc.attributes.data();
-  return vertexInputStateCreateInfo;
-}
-
 // Returns a vector of VkPushConstantRange which are sorted by their offset
 void MaterialManager::getPushConstantRangeData(const ReflectData& data, std::vector<VkPushConstantRange>& outData) {
   for(SpvReflectBlockVariable* pushConstantBlock: data.pushConstantBlockVars) {
@@ -386,4 +364,26 @@ void MaterialManager::mergePushConstantRangeData(const std::vector<VkPushConstan
   if(rangesBIndex < rangesBCount) {
     rangesOut.insert(rangesOut.end(), rangesB.begin() + rangesBIndex, rangesB.end());
   }
+}
+
+VkDescriptorSetLayoutCreateInfo DescriptorSetLayoutData::descriptorSetLayoutCreateInfo() {
+  VkDescriptorSetLayoutCreateInfo descriptorSetLayoutCreateInfo{};
+  descriptorSetLayoutCreateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+  descriptorSetLayoutCreateInfo.pNext = nullptr;
+  descriptorSetLayoutCreateInfo.flags = 0;
+  descriptorSetLayoutCreateInfo.bindingCount = static_cast<u32>(bindings.size());
+  descriptorSetLayoutCreateInfo.pBindings = bindings.data();
+  return descriptorSetLayoutCreateInfo;
+}
+
+VkPipelineVertexInputStateCreateInfo ShaderInputMetadata::vertexInputStateCreateInfo() {
+  VkPipelineVertexInputStateCreateInfo vertexInputStateCreateInfo{};
+  vertexInputStateCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+  vertexInputStateCreateInfo.pNext = nullptr;
+  vertexInputStateCreateInfo.flags = 0;
+  vertexInputStateCreateInfo.vertexBindingDescriptionCount = 1;
+  vertexInputStateCreateInfo.pVertexBindingDescriptions = &vertexInputDesc.bindingDesc;
+  vertexInputStateCreateInfo.vertexAttributeDescriptionCount = static_cast<u32>(vertexInputDesc.attributes.size());
+  vertexInputStateCreateInfo.pVertexAttributeDescriptions = vertexInputDesc.attributes.data();
+  return vertexInputStateCreateInfo;
 }

@@ -1,8 +1,5 @@
 #include "mesh_asset.h"
 
-#include "json.hpp"
-#include "lz4.h"
-
 const internal_access char* mapVertexFormatToString[] = {
         "Unknown",
 #define VertexFormat(name) #name,

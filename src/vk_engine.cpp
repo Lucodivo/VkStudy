@@ -441,15 +441,15 @@ void VulkanEngine::initVulkan() {
 
   SDL_Vulkan_CreateSurface(window, instance, &surface);
 
-  VkPhysicalDeviceFeatures physicalDeviceFeatures{};
-  physicalDeviceFeatures.fillModeNonSolid = VK_TRUE;
+//  VkPhysicalDeviceFeatures physicalDeviceFeatures{};
+//  physicalDeviceFeatures.fillModeNonSolid = VK_TRUE;
 
   vkb::PhysicalDeviceSelector selector{vkbInst};
   vkb::PhysicalDevice physicalDevice = selector
           .set_minimum_version(1, 1)
           .set_surface(surface)
           .require_present()
-          .set_required_features(physicalDeviceFeatures) // TODO: probably won't need this long term
+//          .set_required_features(physicalDeviceFeatures)
           .select()
           .value();
 
@@ -830,9 +830,9 @@ void VulkanEngine::createPipeline(MaterialCreateInfo matInfo) {
   VkPipelineLayoutCreateInfo pipelineLayoutInfo = vkinit::pipelineLayoutCreateInfo();
   pipelineLayoutInfo.pushConstantRangeCount = 0;
   pipelineLayoutInfo.pPushConstantRanges = nullptr;
-  VkDescriptorSetLayout descSets[] = {globalDescSetLayout, objectDescSetLayout, singleTextureSetLayout};
-  pipelineLayoutInfo.setLayoutCount = ArrayCount(descSets);
-  pipelineLayoutInfo.pSetLayouts = descSets;
+  VkDescriptorSetLayout descSetLayouts[] = {globalDescSetLayout, objectDescSetLayout, singleTextureSetLayout};
+  pipelineLayoutInfo.setLayoutCount = ArrayCount(descSetLayouts);
+  pipelineLayoutInfo.pSetLayouts = descSetLayouts;
 
   VkPipelineLayout pipelineLayout;
   VK_CHECK(vkCreatePipelineLayout(device, &pipelineLayoutInfo, nullptr, &pipelineLayout));

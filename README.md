@@ -1,15 +1,32 @@
 ## Purpose
 
-This project currently serves as my own personal project for studying Vulkan.
+Project for studying Vulkan and a general rendering engine playground for myself.
 
 ### Building (⚠IN PROGRESS⚠)
-- This project uses a unity build system. All `#includes` are in `vk_study.h` and most of the project is compiled all at
-  once through `vk_study.cpp`.
-- `sdl2_DIR` environment variable in third_party/CMakeLists.txt must be set to 
-  SDL2 library path (ex: "C:/developer/dependencies/libs/SDL2-2.0.18").
+- This project has a few moving pieces to it:
+  - `vk_study`: This is the executable that actually contains the Vulkan rendering engine. It mostly uses a unity build 
+  system. Meaning, all `#includes` are in a single place (`vk_study.h`) and most of the project is compiled all at once 
+  through the compilation of `vk_study.cpp` alone.
+  - `asset_baker`: This executable is responsible for massaging assets in external formats into a format that the 
+  `vk_study` executable can then directly load into memory. The idea is that we "bake" the assets into a format that is
+  exactly how we want to consume them. This avoids the need to parse or arrange assets during runtime of `vk_study`. This
+  executable also partitions the information about external file formats away from the rest of the project. Removing 
+  dependencies from `vk_study`.
+    - External formats include: .jpg, .png, .tga, .gltf, .glb, .obj
+  - Some source files are compiled separately as static libraries:
+    - `assetlib`: This library contains the definitions of the custom asset file formats. It defines how the structure
+    of the custom assets, implements saving/compressing and loading/decompressing. This library is the communication line
+    between `asset_baker` and `vk_study`.
+    - `noop_math`: Custom math library originating from [NoopScenes](https://github.com/Lucodivo/NoopScenes) project
+  - `sdl2_DIR` environment variable in third_party/CMakeLists.txt must be set to the SDL2 library path 
+    - Ex: "C:/developer/dependencies/libs/SDL2-2.0.18"
 
 ### Running (⚠IN PROGRESS⚠)
-- Working directory should be the root directory of the project.
+- Ensure that the working directory when running `vk_study` or `vk_baker` is the root directory of the project.
+- `vk_baker` takes two command line string arguments.
+  - Argument 1: Directory of the assets
+  - Argument 2: Directory of include file metadata output
+  - Ex: `asset_baker.exe assets/ assets_metadata/`
 - `SDL2.dll` must be placed in same directory as `vk_study.exe`.
 
 ### Example Render

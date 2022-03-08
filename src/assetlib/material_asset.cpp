@@ -1,8 +1,5 @@
 #include <material_asset.h>
 
-#include "json.hpp"
-#include "lz4.h"
-
 const internal_access char* mapTransparencyModeToString[] = {
         "Unknown",
 #define TransparencyMode(name) #name,

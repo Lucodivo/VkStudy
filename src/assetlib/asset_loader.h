@@ -5,6 +5,10 @@
 
 #include <string>
 #include <vector>
+#include <unordered_map>
+
+#include "json.hpp"
+#include "lz4.h"
 
 #include "../types.h"
 

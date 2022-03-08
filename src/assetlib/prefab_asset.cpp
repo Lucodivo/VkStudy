@@ -1,8 +1,5 @@
 #include "prefab_asset.h"
 
-#include "json.hpp"
-#include "lz4.h"
-
 const internal_access char* PREFAB_FOURCC = "PRFB";
 
 const struct {

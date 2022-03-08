@@ -703,10 +703,11 @@ bool extractGltfCombinedMesh(tinygltf::Model& gltfModel, const fs::path& filePat
   };
 
   auto indexHashLambda = [=](const UniqueVert& uniqueVert) {
-    // Note: We're making assumptions that offsets are rarely over 2^16(~65'000)
+    // Note: We're making assumptions that offsets are rarely over 2^21(~2'000'000)
     u64 hashVal = uniqueVert.positionBufferOffset;
-    hashVal +=  (uniqueVert.normalBufferOffset << 16);
-    hashVal = (hashVal << 16);
+    hashVal = (hashVal << 21);
+    hashVal += uniqueVert.normalBufferOffset;
+    hashVal = (hashVal << 21);
     hashVal += uniqueVert.texCoordBufferOffset;
     return hashVal;
   };
@@ -1242,7 +1243,7 @@ bool extractObjCombinedMesh(tinyobj::ObjReader& objReader, const fs::path& fileP
           if(vertexUVsCount > 0) {
             u32 texCoordAttributeStartIndex = 2 * tinyobjIndex.texcoord_index;
             newVert.uv[0] = attrib.texcoords[texCoordAttributeStartIndex + 0];
-            newVert.uv[1] = 1.0f - attrib.texcoords[texCoordAttributeStartIndex + 1]; // TODO: Is inverting uv y coordinate correct?
+            newVert.uv[1] = 1.0f - attrib.texcoords[texCoordAttributeStartIndex + 1];
           } else {
             newVert.uv[0] = 0.5f;
             newVert.uv[1] = 0.5f;
@@ -1314,8 +1315,6 @@ void replaceBackSlashes(std::string& str) {
 }
 
 void writeOutputData(const std::unordered_map<std::string, AssetBakeCachedItem>& oldCache, const ConverterState& converterState) {
-  // TODO: The cache interferes with this functionality. Include the cache into writing the output data
-
   if(!fs::is_directory(converterState.outputFileDir)) {
     fs::create_directory(converterState.outputFileDir);
   }

@@ -1,8 +1,5 @@
 #include "texture_asset.h"
 
-#include "json.hpp"
-#include "lz4.h"
-
 const internal_access char* mapTextureFormatToString[] = {
         "Unknown",
 #define TextureFormat(name) #name,

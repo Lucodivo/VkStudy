@@ -26,9 +26,6 @@
 #define VMA_IMPLEMENTATION
 #include <vk_mem_alloc.h>
 
-#include "assetlib/asset_loader.h"
-#include "assetlib/texture_asset.h"
-
 #include "types.h"
 #include "vk_types.h"
 #include "noop_math/noop_math.h"

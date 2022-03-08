@@ -2,8 +2,6 @@
 
 #include <asset_loader.h>
 
-#include <unordered_map>
-
 namespace assets {
 	enum class TransparencyMode : u32 {
     Unknown = 0,

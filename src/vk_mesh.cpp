@@ -150,7 +150,7 @@ void Mesh::uploadMesh(VmaAllocator vmaAllocator, UploadContext& uploadContext) {
   stagingBufferCreateInfo.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
 
   VmaAllocationCreateInfo vmaAllocInfo = {};
-  vmaAllocInfo.usage = VMA_MEMORY_USAGE_CPU_ONLY; // TODO: VMA_MEMORY_USAGE_CPU_TO_GPU
+  vmaAllocInfo.usage = VMA_MEMORY_USAGE_CPU_ONLY;
 
   AllocatedBuffer stagingBuffer;
   VK_CHECK(vmaCreateBuffer(vmaAllocator,

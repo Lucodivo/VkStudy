@@ -1,4 +1,4 @@
-﻿cmake_minimum_required (VERSION 3.8)
+cmake_minimum_required (VERSION 3.8)
 
 project ("vk_study")
 
@@ -13,7 +13,7 @@ find_program(SPIRV_CROSS spirv-cross HINTS /usr/bin /usr/local/bin $ENV{VULKAN_S
 # All other CMakeLists.txt directories
 add_subdirectory(src)
 add_subdirectory(src/assetlib)
-add_subdirectory(src/asset-baker)
+add_subdirectory(src/asset_baker)
 add_subdirectory(src/noop_math)
 add_subdirectory(src/tests)
 add_subdirectory(third_party)

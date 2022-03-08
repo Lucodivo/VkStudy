@@ -1,5 +1,7 @@
 #include "noop_math.h"
 
+// TODO: No optimizations have been made in this file. Ideas: intrinsics, sse, better usage of temporary memory.
+
 namespace noop {
 
 // floating point

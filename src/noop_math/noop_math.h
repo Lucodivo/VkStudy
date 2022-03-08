@@ -5,7 +5,6 @@
 #include "../types.h"
 
 // Note: If degrees/radians is not specified for angle, angle is assumed to be in radians
-// TODO: No optimizations have been made in this file. Ideas: intrinsics, sse, better usage of temporary memory.
 
 #define Min(x, y) (x < y ? x : y)
 #define Max(x, y) (x > y ? x : y)
@@ -226,10 +225,6 @@ namespace noop {
   quaternion operator/(const quaternion& q1, f32 s);
   quaternion lerp(quaternion a, quaternion b, f32 t);
   quaternion slerp(quaternion a, quaternion b, f32 t);
-
-// TODO: There is a whole 360 degrees of rotation around the endOrientation axis that will all result in a "correct"
-// TODO: end orientation as described by the function parameters.
-// TODO: A reasonable approach might be ensuring the result is essentially a yaw followed by a pitch with no roll.
   quaternion orient(const vec3& startOrientation, const vec3& endOrientation);
 
 // mat2
