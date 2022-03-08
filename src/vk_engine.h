@@ -15,27 +15,27 @@ struct RenderObject {
   Material* material;
   const char* materialName;
   VkDescriptorSet textureSet{VK_NULL_HANDLE}; //texture defaulted to null
-  glm::mat4 modelMatrix;
-  glm::vec4 defaultColor;
+  mat4 modelMatrix;
+  vec4 defaultColor;
 };
 
 struct GPUObjectData {
-  glm::mat4 modelMatrix;
-  glm::vec4 defaultColor;
+  mat4 modelMatrix;
+  vec4 defaultColor;
 };
 
 struct GPUCameraData {
-  glm::mat4 view;
-  glm::mat4 projection;
-  glm::mat4 viewproj;
+  mat4 view;
+  mat4 projection;
+  mat4 viewproj;
 };
 
 struct GPUSceneData {
-  glm::vec4 fogColor; // w is for exponent
-  glm::vec4 fogDistances; //x for min, y for max, zw unused.
-  glm::vec4 ambientColor;
-  glm::vec4 sunlightDirection; //w for sun power
-  glm::vec4 sunlightColor;
+  vec4 fogColor; // w is for exponent
+  vec4 fogDistances; //x for min, y for max, zw unused.
+  vec4 ambientColor;
+  vec4 sunlightDirection; //w for sun power
+  vec4 sunlightColor;
 };
 
 struct FrameData {
@@ -143,9 +143,11 @@ public:
   UploadContext uploadContext;
 
   struct {
-    bool generalDebug;
-    bool mainMenu;
-    bool fps;
+    bool showGeneralDebugText;
+    bool showQuickDebug;
+    bool showMainMenu;
+    bool showFPS;
+    CStringRingBuffer stringRingBuffer;
   } imguiState;
 
 private:
@@ -177,7 +179,6 @@ private:
 
   void loadImages();
   void loadMeshes();
-  void uploadMesh(Mesh& mesh);
   Mesh* getMesh(const std::string& name); //returns nullptr if it can't be found
 
   Material* createMaterial(VkPipeline pipeline, VkPipelineLayout layout, const char* name); //create material and add it to the map

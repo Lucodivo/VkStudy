@@ -1,6 +1,6 @@
 #pragma once
 
-#define SHADER_DIR "../shaders/spv/"
+#define SHADER_DIR "shaders/spv/"
 
 #define SPV_CHECK(x)                                                 \
   do                                                              \

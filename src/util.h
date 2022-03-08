@@ -4,4 +4,5 @@ struct Timer {
 };
 void StartTimer(Timer& timer);
 f64 StopTimer(Timer& timer);
-void readFile(const char* filePath, std::vector<char>& fileBytes);
+bool readFile(const char* filePath, std::vector<char>& fileBytes);
+void writeFile(const char* filePath, const std::string& fileBytes);

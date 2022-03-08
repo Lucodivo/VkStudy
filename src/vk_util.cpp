@@ -1,7 +1,17 @@
 
 #include "vk_util.h"
 
-AllocatedBuffer vkutil::createBuffer(VmaAllocator& vmaAllocator, u64 allocSize, VkBufferUsageFlags usage, VmaMemoryUsage memUsage) {
+// Note: Flags of Interest
+// VkBufferUsageFlags:
+// - VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT
+// - VK_BUFFER_USAGE_STORAGE_BUFFER_BIT
+// - VK_BUFFER_USAGE_TRANSFER_SRC_BIT: Useful for temporary staging buffers
+// VmaMemoryUsage:
+// - VMA_MEMORY_USAGE_CPU_TO_GPU: Useful for uniform/storage buffers
+// - VMA_MEMORY_USAGE_CPU_ONLY: Useful for temporary staging buffers
+// VkMemoryPropertyFlags:
+// - VK_MEMORY_PROPERTY_HOST_CACHED_BIT: Useful if the CPU may read need to read from the buffer (ex: decompressing with LZ4 directly in buffer)
+AllocatedBuffer vkutil::createBuffer(VmaAllocator& vmaAllocator, u64 allocSize, VkBufferUsageFlags usage, VmaMemoryUsage memUsage, VkMemoryPropertyFlags preferredMemoryFlags) {
   //allocate vertex buffer
   VkBufferCreateInfo bufferInfo = {};
   bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
@@ -9,10 +19,10 @@ AllocatedBuffer vkutil::createBuffer(VmaAllocator& vmaAllocator, u64 allocSize, 
 
   bufferInfo.size = allocSize;
   bufferInfo.usage = usage;
-
-
+  
   VmaAllocationCreateInfo vmaallocInfo = {};
   vmaallocInfo.usage = memUsage;
+  vmaallocInfo.preferredFlags = preferredMemoryFlags;
 
   AllocatedBuffer newBuffer;
 

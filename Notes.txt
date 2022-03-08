@@ -27,6 +27,5 @@ Buffers:
 
 TODO:
 - Minimizing breaks app
-- Draw using indices
 - Dynamically create descritptor set layouts and vertex attribute information based on shader reflection
 - Cache descriptor layouts

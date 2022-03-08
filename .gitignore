@@ -4,8 +4,10 @@
 /.vs
 /.idea
 /.github
-/assets
-/third_party/*/
+/assets*
 /shaders/spv
 CMakeSettings.json
 cmake*/
+Asset-Baker-Cache.asb
+scratch.txt
+imgui.ini

@@ -1,23 +1,17 @@
-const glm::vec3 WORLD_UP = {0.f, 0.f, 1.f};
+const vec3 WORLD_UP = {0.f, 0.f, 1.f};
 
 const f32 maxPitch = 70.0f * RadiansPerDegree;
 const f32 maxPitch_invSine = asin(maxPitch);
 
-glm::mat2 rotate(float angle) {
-  float sine = sin(angle);
-  float cosine = cos(angle);
-  return glm::mat2(cosine, -sine, sine, cosine);
-}
-
-void Camera::move(glm::vec3 unitsVec) {
-  glm::vec3 delta = unitsVec.x * right + unitsVec.y * forward + unitsVec.z * up;
+void Camera::move(vec3 unitsVec) {
+  vec3 delta = unitsVec.x * right + unitsVec.y * forward + unitsVec.z * up;
   pos += delta;
 }
 
 void Camera::configVectorsFromForward() {
   // NOTE: forward assumed to be set
-  this->right = glm::normalize(glm::cross(this->forward, WORLD_UP));
-  this->up = glm::cross(right, forward);
+  this->right = normalize(cross(this->forward, WORLD_UP));
+  this->up = cross(right, forward);
 };
 
 // yawDelta is degrees
@@ -27,10 +21,10 @@ void Camera::turn(f32 yawDelta, f32 pitchDelta) {
   f32 sineYaw = -sin(yawDelta);
   f32 cosineYaw = cos(yawDelta);
 
-  glm::vec3 newForward{};
+  vec3 newForward{};
 
   // yaw
-  glm::vec2 xyForward = {forward.x, forward.y};
+  vec2 xyForward = {forward.x, forward.y};
   xyForward = normalize(xyForward);
   newForward.x = (xyForward.x * cosineYaw) + (xyForward.y * -sineYaw);
   newForward.y = (xyForward.x * sineYaw) + (xyForward.y * cosineYaw);
@@ -48,9 +42,9 @@ void Camera::turn(f32 yawDelta, f32 pitchDelta) {
   configVectorsFromForward();
 }
 
-void Camera::setForward(glm::vec3 forward) {
-  Assert(forward.length > 0);
-  glm::vec3 newForward = glm::normalize(forward);
+void Camera::setForward(vec3 forward) {
+  Assert(magnitude(forward) > 0);
+  vec3 newForward = normalize(forward);
 
   // invalid forward
   if(newForward.z > maxPitch_invSine || newForward.z < -maxPitch_invSine) {
@@ -62,19 +56,19 @@ void Camera::setForward(glm::vec3 forward) {
   configVectorsFromForward();
 }
 
-void Camera::lookAt(glm::vec3 focusPoint) {
+void Camera::lookAt(vec3 focusPoint) {
   setForward(focusPoint - pos);
 }
 
-glm::mat4 Camera::getViewMatrix() {
-  glm::mat4 measure{
+mat4 Camera::getViewMatrix() {
+  mat4 measure{
           right.x, up.x, -forward.x, 0.f,
           right.y, up.y, -forward.y, 0.f,
           right.z, up.z, -forward.z, 0.f,
           0.f, 0.f, 0.f, 1.f
   };
 
-  glm::mat4 translate{
+  mat4 translate{
           1.f, 0.f, 0.f, 0.f,
           0.f, 1.f, 0.f, 0.f,
           0.f, 0.f, 1.f, 0.f,

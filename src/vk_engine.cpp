@@ -179,7 +179,7 @@ void VulkanEngine::processInput() {
         case SDLK_e: input.up = false;break;
         case SDLK_LALT: case SDLK_RALT: altDown = false; break;
         case SDLK_RETURN: if (altWasDown) { input.fullscreen = !input.fullscreen; } break;
-        case SDLK_TAB: imguiState.mainMenu = !imguiState.mainMenu; break;
+        case SDLK_TAB: imguiState.showMainMenu = !imguiState.showMainMenu; break;
       }
       break;
     case SDL_MOUSEMOTION:
@@ -197,7 +197,7 @@ void VulkanEngine::processInput() {
 }
 
 void VulkanEngine::quickDebugText(const char* fmt, ...) const {
-  if(imguiState.generalDebug) {
+  if(imguiState.showQuickDebug) {
     va_list args;
     va_start(args, fmt);
     ImGui::TextV(fmt, args);
@@ -206,17 +206,17 @@ void VulkanEngine::quickDebugText(const char* fmt, ...) const {
 }
 
 void VulkanEngine::quickDebugFloat(const char* label, float* v, float v_min, float v_max, const char* format, ImGuiSliderFlags flags) const {
-  if(imguiState.generalDebug) {
+  if(imguiState.showQuickDebug) {
     ImGui::SliderFloat(label, v, v_min, v_max, format, flags);
   }
 }
 
 void VulkanEngine::update() {
-  local_access f32 moveSpeed = 0.2f;
+  local_access f32 moveSpeed = 0.5f;
   local_access f32 turnSpeed = 0.5f;
   local_access bool editMode = true; // NOTE: We assume edit mode is enabled by default
   local_access bool fullscreened = false; // NOTE: We assume windowed by default
-  glm::vec3 cameraDelta = {};
+  vec3 cameraDelta = {};
   f32 yawDelta = 0.0f;
   f32 pitchDelta = 0.0f;
 
@@ -240,7 +240,7 @@ void VulkanEngine::update() {
   }
 
   // Used to keep camera at constant speed regardless of direction
-  const f32 invSqrt[4] = {
+  const vec4 invSqrt = {
           0.0f,
           1.0f,
           0.7071067f,
@@ -288,7 +288,7 @@ void VulkanEngine::update() {
 
   quickDebugFloat("move speed", &moveSpeed, 0.1f, 1.0f, "%.2f");
 
-  camera.move(cameraDelta * (invSqrt[invSqrtIndex] * moveSpeed));
+  camera.move(cameraDelta * (invSqrt.val[invSqrtIndex] * moveSpeed));
 }
 
 FrameData& VulkanEngine::getCurrentFrame() {
@@ -413,12 +413,14 @@ void VulkanEngine::initImgui() {
   }
 
   imguiState = {};
-  imguiState.mainMenu = true;
-  imguiState.fps = true;
+  imguiState.showMainMenu = true;
+  imguiState.showFPS = true;
+  imguiState.stringRingBuffer = createCStringRingBuffer(50, 256);
 
   mainDeletionQueue.pushFunction([=]() {
     vkDestroyDescriptorPool(device, imguiDescriptorPool, nullptr);
     ImGui_ImplVulkan_Shutdown();
+    deleteCStringRingBuffer(imguiState.stringRingBuffer);
   });
 }
 
@@ -430,7 +432,7 @@ void VulkanEngine::initVulkan() {
           .request_validation_layers(true)
           .require_api_version(1, 1, 0)
           .use_default_debug_messenger()
-                  //.enable_extension("VK_KHR_Maintenance1") // needed for Vulkan versions <1.1 when using negative viewport valuesto perform y-inversion of the clip space
+          //.enable_extension("VK_KHR_Maintenance1") // needed for Vulkan versions <1.1 when using negative viewport valuesto perform y-inversion of the clip space
           .build()
           .value();
 
@@ -439,15 +441,15 @@ void VulkanEngine::initVulkan() {
 
   SDL_Vulkan_CreateSurface(window, instance, &surface);
 
-  VkPhysicalDeviceFeatures physicalDeviceFeatures{};
-  physicalDeviceFeatures.fillModeNonSolid = VK_TRUE;
+//  VkPhysicalDeviceFeatures physicalDeviceFeatures{};
+//  physicalDeviceFeatures.fillModeNonSolid = VK_TRUE;
 
   vkb::PhysicalDeviceSelector selector{vkbInst};
   vkb::PhysicalDevice physicalDevice = selector
           .set_minimum_version(1, 1)
           .set_surface(surface)
           .require_present()
-          .set_required_features(physicalDeviceFeatures) // TODO: probably won't need this long term
+//          .set_required_features(physicalDeviceFeatures)
           .select()
           .value();
 
@@ -712,7 +714,7 @@ void VulkanEngine::initDescriptors() {
   u64 globalBufferSize = FRAME_OVERLAP * (paddedGPUCameraDataSize + paddedGPUSceneDataSize);
   globalBuffer.cameraOffset = 0;
   globalBuffer.sceneOffset = FRAME_OVERLAP * paddedGPUCameraDataSize;
-  globalBuffer.buffer = vkutil::createBuffer(vmaAllocator, globalBufferSize, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
+  globalBuffer.buffer = vkutil::createBuffer(vmaAllocator, globalBufferSize, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU, 0);
   vkAllocateDescriptorSets(device, &globalDescSetAllocInfo, &globalDescriptorSet);
 
   // info about the buffer the descriptor will point at
@@ -738,7 +740,7 @@ void VulkanEngine::initDescriptors() {
   for(u32 i = 0; i < FRAME_OVERLAP; i++) {
     FrameData& frame = frames[i];
 
-    frame.objectBuffer = vkutil::createBuffer(vmaAllocator, objectBufferSize, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
+    frame.objectBuffer = vkutil::createBuffer(vmaAllocator, objectBufferSize, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU, 0);
     vkAllocateDescriptorSets(device, &objectDescSetAllocInfo, &frame.objectDescriptorSet);
 
     VkDescriptorBufferInfo objectDescBufferInfo;
@@ -828,9 +830,9 @@ void VulkanEngine::createPipeline(MaterialCreateInfo matInfo) {
   VkPipelineLayoutCreateInfo pipelineLayoutInfo = vkinit::pipelineLayoutCreateInfo();
   pipelineLayoutInfo.pushConstantRangeCount = 0;
   pipelineLayoutInfo.pPushConstantRanges = nullptr;
-  VkDescriptorSetLayout descSets[] = {globalDescSetLayout, objectDescSetLayout, singleTextureSetLayout};
-  pipelineLayoutInfo.setLayoutCount = ArrayCount(descSets);
-  pipelineLayoutInfo.pSetLayouts = descSets;
+  VkDescriptorSetLayout descSetLayouts[] = {globalDescSetLayout, objectDescSetLayout, singleTextureSetLayout};
+  pipelineLayoutInfo.setLayoutCount = ArrayCount(descSetLayouts);
+  pipelineLayoutInfo.pSetLayouts = descSetLayouts;
 
   VkPipelineLayout pipelineLayout;
   VK_CHECK(vkCreatePipelineLayout(device, &pipelineLayoutInfo, nullptr, &pipelineLayout));
@@ -869,51 +871,8 @@ void VulkanEngine::createPipeline(MaterialCreateInfo matInfo) {
 }
 
 void VulkanEngine::initScene() {
-  /*
-	RenderObject focusObject;
-	focusObject.mesh = getMesh("mrSaturn");
-	focusObject.materialName = materialDefaultLit.name;
-	focusObject.material = getMaterial(focusObject.materialName);
-	f32 focusScale = 20.0f;
-	glm::mat4 focusScaleMat = glm::scale(glm::mat4{ 1.0 }, glm::vec3(focusScale, focusScale, focusScale));
-	glm::mat4 focusTranslationMat = glm::translate(glm::mat4{ 1.0 }, glm::vec3(0.0f, 0.0f, -focusScale * 2.0f));
-	glm::mat4 focusTransform = focusTranslationMat * focusScaleMat;
-	focusObject.modelMatrix = focusTransform;
-	focusObject.defaultColor = glm::vec4(155.0f / 255.0f, 115.0f / 255.0f, 96.0f / 255.0f, 1.0f);
-	renderables.push_back(focusObject);
 
-	RenderObject environmentObject;
-	environmentObject.mesh = getMesh("cube");
-	environmentObject.materialName = materialDefaulColor.name;
-	environmentObject.material = getMaterial(environmentObject.materialName);
-	f32 envScale = 0.2f;
-	glm::mat4 envScaleMat = glm::scale(glm::mat4{ 1.0 }, glm::vec3(envScale, envScale, envScale));
-	for (s32 x = -16; x <= 16; ++x)
-	for (s32 y = -16; y <= 16; ++y)
-	for (s32 z = 0; z <= 32; ++z) {
-		glm::vec3 pos{ x, y, z };
-		glm::vec3 color = (pos + glm::vec3(16.0f, 16.0f, 0.0f)) / glm::vec3(32.0f, 32.0f, 32.0f);
-		glm::mat4 translationMat = glm::translate(glm::mat4{ 1.0 }, pos);
-		environmentObject.modelMatrix = translationMat * envScaleMat;
-		environmentObject.defaultColor = glm::vec4(color, 1.0f);
-		renderables.push_back(environmentObject);
-	}
-   */
-
-
-  RenderObject focusObject;
-  focusObject.mesh = getMesh("empire");
-  focusObject.materialName = materialTextured.name;
-  focusObject.material = getMaterial(focusObject.materialName);
-  focusObject.defaultColor = glm::vec4(50.0f, 0.0f, 0.0f, 1.0f);
-
-  f32 focusScale = 1.0f;
-  glm::mat4 focusScaleMat = glm::scale(glm::mat4{1.0}, glm::vec3(focusScale, focusScale, focusScale));
-  glm::mat4 focusRotationMat = glm::rotate(RadiansPerDegree * 90.0f, glm::vec3(1.0f, 0.0f, 0.0f));
-  glm::mat4 focusTranslationMat = glm::translate(glm::mat4{1.0}, glm::vec3(0.0f, 0.0f, 0.0f));
-  glm::mat4 focusTransform = focusTranslationMat * focusRotationMat * focusScaleMat;
-  focusObject.modelMatrix = focusTransform;
-
+  // Samplers //
   VkSamplerCreateInfo samplerInfo = vkinit::samplerCreateInfo(VK_FILTER_NEAREST);
 
   VkSampler blockySampler;
@@ -927,19 +886,70 @@ void VulkanEngine::initScene() {
   allocInfo.descriptorSetCount = 1;
   allocInfo.pSetLayouts = &singleTextureSetLayout;
 
-  vkAllocateDescriptorSets(device, &allocInfo, &focusObject.textureSet);
+  auto attachTexture = [&](VkSampler sampler, const char* loadedTexture, VkDescriptorSet* textureSet) -> void {
+    vkAllocateDescriptorSets(device, &allocInfo, textureSet);
 
-  //write to the descriptor set so that it points to our empire_diffuse texture
-  VkDescriptorImageInfo imageBufferInfo;
-  imageBufferInfo.sampler = blockySampler;
-  imageBufferInfo.imageView = loadedTextures["empire_diffuse"].imageView;
-  imageBufferInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    //write to the descriptor set so that it points to our minecraft_diffuse texture
+    VkDescriptorImageInfo imageBufferInfo;
+    imageBufferInfo.sampler = blockySampler;
+    imageBufferInfo.imageView = loadedTextures[loadedTexture].imageView;
+    imageBufferInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 
-  VkWriteDescriptorSet texture = vkinit::writeDescriptorImage(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, focusObject.textureSet, &imageBufferInfo, 0);
+    VkWriteDescriptorSet texture = vkinit::writeDescriptorImage(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, *textureSet, &imageBufferInfo, 0);
 
-  vkUpdateDescriptorSets(device, 1, &texture, 0, nullptr);
+    vkUpdateDescriptorSets(device, 1, &texture, 0, nullptr);
+  };
 
-  renderables.push_back(focusObject);
+  // Renderables //
+  // Mr. Saturn
+	RenderObject mrSaturnObject;
+  mrSaturnObject.mesh = getMesh(bakedMeshAssetData.mr_saturn.name);
+  mrSaturnObject.materialName = materialDefaultLit.name;
+  mrSaturnObject.material = getMaterial(mrSaturnObject.materialName);
+	f32 mrSaturnScale = 20.0f;
+	mat4 mrSaturnScaleMat = scale_mat4(vec3{mrSaturnScale, mrSaturnScale, mrSaturnScale});
+	mat4 mrSaturnTranslationMat = translate_mat4(vec3{0.0f, 0.0f, -mrSaturnScale * 2.0f});
+	mat4 mrSaturnTransform = mrSaturnTranslationMat * mrSaturnScaleMat;
+  mrSaturnObject.modelMatrix = mrSaturnTransform;
+  mrSaturnObject.defaultColor = vec4{155.0f / 255.0f, 115.0f / 255.0f, 96.0f / 255.0f, 1.0f};
+  attachTexture(blockySampler, bakedTextureAssetData.single_white_pixel.name, &mrSaturnObject.textureSet);
+	renderables.push_back(mrSaturnObject);
+
+  // Cubes //
+	RenderObject cubeObject;
+  cubeObject.mesh = getMesh(bakedMeshAssetData.cube.name);
+  cubeObject.materialName = materialDefaulColor.name;
+  cubeObject.material = getMaterial(cubeObject.materialName);
+  attachTexture(blockySampler, bakedTextureAssetData.single_white_pixel.name, &cubeObject.textureSet);
+	f32 envScale = 0.2f;
+	mat4 envScaleMat = scale_mat4(vec3{envScale, envScale, envScale});
+	for (s32 x = -16; x <= 16; ++x)
+	for (s32 y = -16; y <= 16; ++y)
+	for (s32 z = 0; z <= 32; ++z) {
+		vec3 pos{ (f32)x, (f32)y, (f32)z };
+		vec3 color = (pos + vec3{16.0f, 16.0f, 0.0f}) / vec3{32.0f, 32.0f, 32.0f};
+		mat4 translationMat = translate_mat4(pos);
+    cubeObject.modelMatrix = translationMat * envScaleMat;
+    cubeObject.defaultColor = vec4{color.r, color.g, color.b, 1.0f}; // TODO: lookup how glm accomplishes vec4{vec3, f32} construction
+		renderables.push_back(cubeObject);
+	}
+
+  // Minecraft World
+//  RenderObject minecraftObject;
+//  minecraftObject.mesh = getMesh(bakedMeshAssetData.lost_empire.name);
+//  minecraftObject.materialName = materialTextured.name;
+//  minecraftObject.material = getMaterial(minecraftObject.materialName);
+//  minecraftObject.defaultColor = vec4{50.0f, 0.0f, 0.0f, 1.0f};
+//  attachTexture(blockySampler, bakedTextureAssetData.lost_empire_RGBA.name, &minecraftObject.textureSet);
+//
+//  f32 minecraftScale = 1.0f;
+//  mat4 minecraftScaleMat = scale_mat4(vec3{minecraftScale, minecraftScale, minecraftScale});
+//  mat4 minecraftRotationMat = rotate_mat4(RadiansPerDegree * 90.0f, vec3{1.0f, 0.0f, 0.0f});
+//  mat4 minecraftTranslationMat = translate_mat4(vec3{0.0f, 0.0f, 0.0f});
+//  mat4 minecraftTransform = minecraftTranslationMat * minecraftRotationMat * minecraftScaleMat;
+//  minecraftObject.modelMatrix = minecraftTransform;
+//
+//  renderables.push_back(minecraftObject);
 
   // TODO: sort objects by material to minimize binding pipelines
   //std::sort(renderables.begin(), renderables.end(), [](const RenderObject& a, const RenderObject& b) {
@@ -958,90 +968,28 @@ void VulkanEngine::initCamera() {
 }
 
 void VulkanEngine::loadMeshes() {
-  struct ModelData {
-    const char* modelFile;
-    const char* meshName;
-  } const modelData[] = {
-          {
-                  "../assets/cube.glb",
-                  "cube"
-          },
-          {
-                  "../assets/mr_saturn.glb",
-                  "mrSaturn"
-          },
-          {
-                  "../assets/lost_empire.obj",
-                  "empire"
-          },
-  };
+  // Note: Currently just loading all meshes, not sustainable in long run
+  BakedAssetData* bakedMeshes = (BakedAssetData*)(&bakedMeshAssetData);
+  u32 meshCount = bakedMeshAssetCount();
+  for(u32 i = 0; i < meshCount; i++) {
+    const BakedAssetData& bakedMeshData = bakedMeshes[i];
 
-  for(u32 i = 0; i < ArrayCount(modelData); i++) {
-    const ModelData& model = modelData[i];
     Mesh mesh{};
-    mesh.loadFromFile(model.modelFile);
-    mesh.uploadMesh(vmaAllocator);
-    meshes[model.meshName] = mesh;
+    mesh.loadFromAsset(bakedMeshData.filePath);
+    mesh.uploadMesh(vmaAllocator, uploadContext);
+    meshes[bakedMeshData.name] = mesh;
   }
 
   mainDeletionQueue.pushFunction([=]() {
-    for(u32 i = 0; i < ArrayCount(modelData); i++) {
-      const ModelData& model = modelData[i];
-      Mesh mesh = meshes[model.meshName];
-      meshes.erase(model.meshName);
+    u32 meshCount = bakedMeshAssetCount();
+    for(u32 i = 0; i < meshCount; i++) {
+      const BakedAssetData& bakedMeshData = bakedMeshes[i];
+      const Mesh& mesh = meshes[bakedMeshData.name];
       vmaDestroyBuffer(vmaAllocator, mesh.vertexBuffer.vkBuffer, mesh.vertexBuffer.vmaAllocation);
+      vmaDestroyBuffer(vmaAllocator, mesh.indexBuffer.vkBuffer, mesh.indexBuffer.vmaAllocation);
+      meshes.erase(bakedMeshData.name);
     }
   });
-}
-
-void VulkanEngine::uploadMesh(Mesh& mesh) {
-  const u64 bufferSize = mesh.vertices.size() * sizeof(Vertex);
-
-  VkBufferCreateInfo stagingBufferInfo = {};
-  stagingBufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-  stagingBufferInfo.pNext = nullptr;
-  stagingBufferInfo.size = bufferSize;
-  stagingBufferInfo.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT; // tells Vulkan this buffer is only used as a source for transfer commands
-
-  VmaAllocationCreateInfo vmaStagingAllocInfo = {};
-  vmaStagingAllocInfo.usage = VMA_MEMORY_USAGE_CPU_ONLY;
-
-  AllocatedBuffer stagingBuffer; // tmp buffer
-  VK_CHECK(vmaCreateBuffer(vmaAllocator, &stagingBufferInfo, &vmaStagingAllocInfo,
-                           &stagingBuffer.vkBuffer,
-                           &stagingBuffer.vmaAllocation,
-                           nullptr));
-
-  void* data;
-  vmaMapMemory(vmaAllocator, stagingBuffer.vmaAllocation, &data);
-  memcpy(data, mesh.vertices.data(), bufferSize);
-  vmaUnmapMemory(vmaAllocator, mesh.vertexBuffer.vmaAllocation);
-
-  VkBufferCreateInfo vertexBufferInfo = stagingBufferInfo;
-  vertexBufferInfo.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
-
-  VmaAllocationCreateInfo vmaVertexAllocInfo = {};
-  vmaVertexAllocInfo.usage = VMA_MEMORY_USAGE_GPU_ONLY;
-
-  VK_CHECK(vmaCreateBuffer(vmaAllocator, &vertexBufferInfo, &vmaVertexAllocInfo,
-                           &mesh.vertexBuffer.vkBuffer,
-                           &mesh.vertexBuffer.vmaAllocation,
-                           nullptr));
-
-  vkutil::immediateSubmit(uploadContext, [=](VkCommandBuffer cmd) {
-    VkBufferCopy copy;
-    copy.dstOffset = 0;
-    copy.srcOffset = 0;
-    copy.size = bufferSize;
-    vkCmdCopyBuffer(cmd, stagingBuffer.vkBuffer, mesh.vertexBuffer.vkBuffer, 1, &copy);
-  });
-
-  vmaDestroyBuffer(vmaAllocator, stagingBuffer.vkBuffer, stagingBuffer.vmaAllocation);
-
-  mainDeletionQueue.pushFunction([=]() {
-    vmaDestroyBuffer(vmaAllocator, mesh.vertexBuffer.vkBuffer, mesh.vertexBuffer.vmaAllocation);
-  });
-
 }
 
 void VulkanEngine::cleanupSwapChain() {
@@ -1128,6 +1076,7 @@ Mesh* VulkanEngine::getMesh(const std::string& name) {
 
 void VulkanEngine::drawFragmentShader(VkCommandBuffer cmd) {
   vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, fragmentShaderPipeline);
+  // vkCmdBindDescriptorSets() not needed as descriptor count set is 0
 
   VkViewport viewport{};
   viewport.x = 0;
@@ -1154,28 +1103,32 @@ void VulkanEngine::drawObjects(VkCommandBuffer cmd, RenderObject* firstObject, u
   // camera data
   GPUCameraData cameraData;
   cameraData.view = camera.getViewMatrix();
-  cameraData.projection = glm::perspective(glm::radians(70.f), 1700.f / 900.f, 0.1f, 200.0f);
+  cameraData.projection = perspective(radians(70.f), 1700.f / 900.f, 0.1f, 200.0f);
   cameraData.viewproj = cameraData.projection * cameraData.view;
   // scene data
   GPUSceneData sceneData;
   float magicNum = (frameNumber / 120.f);
   sceneData.ambientColor = {sin(magicNum), 0, cos(magicNum), 1};
 
+  int frameIndex = frameNumber % FRAME_OVERLAP;
+
   // copy data to scene buffer
+  u64 sceneDataOffset = (u32)vkutil::padUniformBufferSize(gpuProperties, sizeof(GPUSceneData)) * frameIndex;
+  u64 cameraDataOffset = (u32)vkutil::padUniformBufferSize(gpuProperties, sizeof(GPUCameraData)) * frameIndex;
   char* globalDataBufferPtr;
   vmaMapMemory(vmaAllocator, globalBuffer.buffer.vmaAllocation, (void**)&globalDataBufferPtr);
-  int frameIndex = frameNumber % FRAME_OVERLAP;
-  // copy camera data
-  char* cameraPtr = (globalDataBufferPtr + globalBuffer.cameraOffset);
-  u64 cameraDataOffset = (u32)vkutil::padUniformBufferSize(gpuProperties, sizeof(GPUCameraData)) * frameIndex;
-  cameraPtr += cameraDataOffset;
-  memcpy(cameraPtr, &cameraData, sizeof(GPUCameraData));
-  // copy scene data
-  char* scenePtr = (globalDataBufferPtr + globalBuffer.sceneOffset);
-  u64 sceneDataOffset = (u32)vkutil::padUniformBufferSize(gpuProperties, sizeof(GPUSceneData)) * frameIndex;
-  scenePtr += sceneDataOffset;
-  memcpy(scenePtr, &sceneData, sizeof(GPUSceneData));
-  globalDataBufferPtr = nullptr, cameraPtr = nullptr, scenePtr = nullptr;
+  {
+    // copy camera data
+    char* cameraPtr = (globalDataBufferPtr + globalBuffer.cameraOffset);
+    cameraPtr += cameraDataOffset;
+    memcpy(cameraPtr, &cameraData, sizeof(GPUCameraData));
+
+    // copy scene data
+    char* scenePtr = (globalDataBufferPtr + globalBuffer.sceneOffset);
+    scenePtr += sceneDataOffset;
+    memcpy(scenePtr, &sceneData, sizeof(GPUSceneData));
+    globalDataBufferPtr = nullptr;
+  }
   vmaUnmapMemory(vmaAllocator, globalBuffer.buffer.vmaAllocation);
 
   // copy data to object buffer
@@ -1252,6 +1205,7 @@ void VulkanEngine::drawObjects(VkCommandBuffer cmd, RenderObject* firstObject, u
       //bind the mesh vertex buffer with offset 0
       VkDeviceSize offset = 0;
       vkCmdBindVertexBuffers(cmd, 0, 1, &object.mesh->vertexBuffer.vkBuffer, &offset);
+      vkCmdBindIndexBuffer(cmd, object.mesh->indexBuffer.vkBuffer, 0, VK_INDEX_TYPE_UINT32);
       lastMesh = object.mesh;
     }
 
@@ -1265,7 +1219,7 @@ void VulkanEngine::drawObjects(VkCommandBuffer cmd, RenderObject* firstObject, u
       drawCount++;
     }
 
-    vkCmdDraw(cmd, (u32)object.mesh->vertices.size(), drawCount, 0, i);
+    vkCmdDrawIndexed(cmd, (u32)object.mesh->indices.size(), drawCount, 0, 0, i);
     i += drawCount - 1;
   }
 
@@ -1278,23 +1232,26 @@ void VulkanEngine::startImguiFrame() {
   ImGui_ImplSDL2_NewFrame(window);
   ImGui::NewFrame();
 
-  if(imguiState.mainMenu) {
+  if(imguiState.showMainMenu) {
     if(ImGui::BeginMainMenuBar()) {
       if(ImGui::BeginMenu("Windows")) {
-        ImGui::MenuItem("Quick Debug Log", NULL, &imguiState.generalDebug);
-        ImGui::MenuItem("Main Debug Menu", NULL, &imguiState.mainMenu);
-        ImGui::MenuItem("FPS", NULL, &imguiState.fps);
+        ImGui::MenuItem("Quick Debug Log", NULL, &imguiState.showQuickDebug);
+        ImGui::MenuItem("General Debug Text", NULL, &imguiState.showGeneralDebugText);
+        ImGui::MenuItem("Main Debug Menu", NULL, &imguiState.showMainMenu);
+        ImGui::MenuItem("FPS", NULL, &imguiState.showFPS);
         ImGui::EndMenu();
       }ImGui::EndMainMenuBar();
     }
   }
 
+  imguiTextWindow("General Debug", imguiState.stringRingBuffer, imguiState.showGeneralDebugText);
+
   local_access Timer frameTimer;
   f64 frameTimeMs = StopTimer(frameTimer); // for last frame
   f64 frameFPS = 1000.0 / frameTimeMs;
-  if(imguiState.fps) {
+  if(imguiState.showFPS) {
     const ImGuiWindowFlags textNoFrills = ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoResize;
-    if(ImGui::Begin("FPS", &imguiState.fps, textNoFrills)) {
+    if(ImGui::Begin("FPS", &imguiState.showFPS, textNoFrills)) {
       ImGui::Text("%5.2f ms | %3.1f fps", frameTimeMs, frameFPS);
     }ImGui::End();
   }
@@ -1310,12 +1267,38 @@ void VulkanEngine::renderImgui(VkCommandBuffer cmd) {
 }
 
 void VulkanEngine::loadImages() {
-  Texture lostEmpire;
+  // Note: Currently just loading all textures, not sustainable in long run
+  BakedAssetData* bakedTextures = (BakedAssetData*)(&bakedTextureAssetData);
+  u32 textureCount = bakedTextureAssetCount();
+  std::vector<AllocatedImage> allocatedImageTextures;
+  allocatedImageTextures.resize(textureCount);
+  std::vector<const char*> filePaths;
+  filePaths.resize(textureCount);
 
-  vkutil::loadImageFromFile(vmaAllocator, uploadContext, "../assets/lost_empire-RGBA.png", lostEmpire.image);
+  for(u32 i = 0; i < textureCount; i++) {
+    filePaths[i] = bakedTextures[i].filePath;
+  }
 
-  VkImageViewCreateInfo imageinfo = vkinit::imageViewCreateInfo(VK_FORMAT_R8G8B8A8_SRGB, lostEmpire.image.vkImage, VK_IMAGE_ASPECT_COLOR_BIT);
-  vkCreateImageView(device, &imageinfo, nullptr, &lostEmpire.imageView);
+  vkutil::loadImagesFromAssetFiles(vmaAllocator, uploadContext, filePaths.data(), allocatedImageTextures.data(), textureCount);
 
-  loadedTextures["empire_diffuse"] = lostEmpire;
+  for(u32 i = 0; i < textureCount; i++) {
+    const BakedAssetData& bakedTextureData = bakedTextures[i];
+
+    Texture tex{};
+    tex.image = allocatedImageTextures[i];
+    VkImageViewCreateInfo imageCreateInfo = vkinit::imageViewCreateInfo(tex.image.vkFormat, tex.image.vkImage, VK_IMAGE_ASPECT_COLOR_BIT);
+    vkCreateImageView(device, &imageCreateInfo, nullptr, &tex.imageView);
+
+    loadedTextures[bakedTextureData.name] = tex;
+  }
+
+  mainDeletionQueue.pushFunction([=]() {
+    for(u32 i = 0; i < textureCount; i++) {
+      const BakedAssetData& bakedTextureData = bakedTextures[i];
+      Texture texture = loadedTextures[bakedTextureData.name];
+      vkDestroyImageView(device, texture.imageView, nullptr);
+      vmaDestroyImage(vmaAllocator, texture.image.vkImage, texture.image.vmaAllocation);
+      loadedTextures.erase(bakedTextureData.name);
+    }
+  });
 }
