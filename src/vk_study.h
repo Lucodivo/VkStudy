@@ -28,6 +28,7 @@
 
 #include "types.h"
 #include "vk_types.h"
+#include "window_manager.h"
 #include "noop_math/noop_math.h"
 using namespace noop;
 #include "util.h"

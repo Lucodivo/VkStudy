@@ -16,10 +16,8 @@ const VkClearValue depthClearValue{
 };
 
 void VulkanEngine::init() {
-  // needed for SDL to counteract the scaling Windows can do for windows
-  SetProcessDPIAware();
 
-  initSDL();
+  WindowManager::getInstance().getExtent(&windowExtent.width, &windowExtent.height);
 
   initCamera();
 
@@ -61,7 +59,6 @@ void VulkanEngine::cleanup() {
     vkDestroySurfaceKHR(instance, surface, nullptr);
     vkb::destroy_debug_utils_messenger(instance, debugMessenger);
     vkDestroyInstance(instance, nullptr);
-    SDL_DestroyWindow(window);
   }
 }
 
@@ -143,59 +140,6 @@ void VulkanEngine::draw() {
   frameNumber++;
 }
 
-void VulkanEngine::processInput() {
-  local_access bool altDown = false;
-  bool altWasDown = altDown;
-
-  SDL_Event e;
-  while (SDL_PollEvent(&e) != 0)
-  {
-    switch (e.type) {
-    case SDL_QUIT: input.quit = true; break;
-    case SDL_KEYDOWN:
-      switch (e.key.keysym.sym)
-      {
-        case SDLK_ESCAPE: input.quit = true; break;
-        case SDLK_SPACE: break;
-        case SDLK_LSHIFT: input.button1 = true; break;
-        case SDLK_a: case SDLK_LEFT: input.left = true; break;
-        case SDLK_d: case SDLK_RIGHT: input.right = true; break;
-        case SDLK_w: case SDLK_UP: input.forward = true; break;
-        case SDLK_s: case SDLK_DOWN: input.back = true; break;
-        case SDLK_q: input.down = true; break;
-        case SDLK_e: input.up = true; break;
-        case SDLK_LALT: case SDLK_RALT: altDown = true; break;
-      }
-      break;
-    case SDL_KEYUP:
-      switch (e.key.keysym.sym)
-      {
-        case SDLK_SPACE: input.switch1 = !input.switch1; break;
-        case SDLK_a: case SDLK_LEFT: input.left = false; break;
-        case SDLK_d: case SDLK_RIGHT: input.right = false; break;
-        case SDLK_w: case SDLK_UP: input.forward = false; break;
-        case SDLK_s: case SDLK_DOWN: input.back = false; break;
-        case SDLK_q: input.down = false; break;
-        case SDLK_e: input.up = false;break;
-        case SDLK_LALT: case SDLK_RALT: altDown = false; break;
-        case SDLK_RETURN: if (altWasDown) { input.fullscreen = !input.fullscreen; } break;
-        case SDLK_TAB: imguiState.showMainMenu = !imguiState.showMainMenu; break;
-      }
-      break;
-    case SDL_MOUSEMOTION:
-    {
-      input.mouseDeltaX += (f32)e.motion.xrel / windowExtent.width;
-      input.mouseDeltaY += (f32)e.motion.yrel / windowExtent.height;
-      break;
-    }
-    default: break;
-    }
-
-    // also send input to ImGui
-    ImGui_ImplSDL2_ProcessEvent(&e);
-  }
-}
-
 void VulkanEngine::quickDebugText(const char* fmt, ...) const {
   if(imguiState.showQuickDebug) {
     va_list args;
@@ -211,28 +155,16 @@ void VulkanEngine::quickDebugFloat(const char* label, float* v, float v_min, flo
   }
 }
 
-void VulkanEngine::update() {
+void VulkanEngine::update(const Input& input) {
+  startImguiFrame();
+
   local_access f32 moveSpeed = 0.5f;
   local_access f32 turnSpeed = 0.5f;
   local_access bool editMode = true; // NOTE: We assume edit mode is enabled by default
-  local_access bool fullscreened = false; // NOTE: We assume windowed by default
+
   vec3 cameraDelta = {};
   f32 yawDelta = 0.0f;
   f32 pitchDelta = 0.0f;
-
-  if(fullscreened != input.fullscreen) {
-    fullscreened = !fullscreened;
-
-    if(fullscreened) {
-      SDL_SetWindowFullscreen(window, SDL_WINDOW_FULLSCREEN_DESKTOP);
-      SDL_GLContext sdlContext = SDL_GL_CreateContext(window);
-      SDL_GL_MakeCurrent(window, sdlContext);
-    } else {
-      SDL_SetWindowFullscreen(window, 0);
-      SDL_GLContext sdlContext = SDL_GL_CreateContext(window);
-      SDL_GL_MakeCurrent(window, sdlContext);
-    }
-  }
 
   if(editMode != input.switch1) {
     editMode = input.switch1;
@@ -275,15 +207,13 @@ void VulkanEngine::update() {
     }
   }
 
-  if(!editMode && (input.mouseDeltaX != 0.0f || input.mouseDeltaY != 0.0f)) {
+  if(!editMode && (input.mouseDeltaX != 0 || input.mouseDeltaY != 0)) {
     f32 turnSpd = turnSpeed * 10.0f;
-    camera.turn(input.mouseDeltaX * turnSpd, input.mouseDeltaY * turnSpd);
-  }
-
-  // reset some input variables
-  {
-    input.mouseDeltaX = 0.0f;
-    input.mouseDeltaY = 0.0f;
+    vec2 mouseDelta_normalized = {
+            (f32)input.mouseDeltaX / windowExtent.width,
+            (f32)input.mouseDeltaY / windowExtent.height
+    };
+    camera.turn(mouseDelta_normalized.x * turnSpd, mouseDelta_normalized.y * turnSpd);
   }
 
   quickDebugFloat("move speed", &moveSpeed, 0.1f, 1.0f, "%.2f");
@@ -293,30 +223,6 @@ void VulkanEngine::update() {
 
 FrameData& VulkanEngine::getCurrentFrame() {
   return frames[frameNumber % FRAME_OVERLAP];
-}
-
-void VulkanEngine::run() {
-  while(!input.quit) {
-    processInput();
-    startImguiFrame();
-    update();
-    draw();
-  }
-}
-
-void VulkanEngine::initSDL() {
-  SDL_Init(SDL_INIT_VIDEO);
-  SDL_WindowFlags window_flags = (SDL_WindowFlags)(SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI);
-  window = SDL_CreateWindow(
-          "Vulkan Engine",
-          SDL_WINDOWPOS_UNDEFINED,
-          SDL_WINDOWPOS_UNDEFINED,
-          windowExtent.width,
-          windowExtent.height,
-          window_flags
-  );
-  SDL_CaptureMouse(SDL_TRUE);
-  SDL_SetHintWithPriority(SDL_HINT_MOUSE_RELATIVE_MODE_WARP, "1", SDL_HINT_OVERRIDE);
 }
 
 void VulkanEngine::initImgui() {
@@ -376,7 +282,7 @@ void VulkanEngine::initImgui() {
     VK_CHECK(vkCreateDescriptorPool(device, &poolInfo, nullptr, &imguiDescriptorPool));
   }
 
-  ImGui_ImplSDL2_InitForVulkan(window);
+  WindowManager::getInstance().initImguiForWindow();
   ImGui_ImplVulkan_InitInfo initInfo = {};
   initInfo.Instance = instance;
   initInfo.PhysicalDevice = chosenGPU;
@@ -439,7 +345,7 @@ void VulkanEngine::initVulkan() {
   instance = vkbInst.instance;
   debugMessenger = vkbInst.debug_messenger;
 
-  SDL_Vulkan_CreateSurface(window, instance, &surface);
+  WindowManager::getInstance().createSurface(instance, &surface, &windowExtent.width, &windowExtent.height);
 
 //  VkPhysicalDeviceFeatures physicalDeviceFeatures{};
 //  physicalDeviceFeatures.fillModeNonSolid = VK_TRUE;
@@ -1023,15 +929,7 @@ void VulkanEngine::cleanupSwapChain() {
 }
 
 void VulkanEngine::recreateSwapChain() {
-  s32 w, h;
-  SDL_GetWindowSize(window, &w, &h);
-  while(w == 0 || h == 0) {
-    // TODO: Does this actually work?
-    SDL_WaitEvent(NULL);
-    SDL_GetWindowSize(window, &w, &h);
-  }
-  windowExtent.width = w;
-  windowExtent.height = h;
+  WindowManager::getInstance().getExtent(&windowExtent.width, &windowExtent.height);
 
   vkDeviceWaitIdle(device);
 
@@ -1229,7 +1127,7 @@ void VulkanEngine::drawObjects(VkCommandBuffer cmd, RenderObject* firstObject, u
 
 void VulkanEngine::startImguiFrame() {
   ImGui_ImplVulkan_NewFrame();
-  ImGui_ImplSDL2_NewFrame(window);
+  ImGui_ImplSDL2_NewFrame();
   ImGui::NewFrame();
 
   if(imguiState.showMainMenu) {

@@ -2,9 +2,6 @@
 
 const u32 FRAME_OVERLAP = 2;
 
-#define DEFAULT_WINDOW_WIDTH 1920
-#define DEFAULT_WINDOW_HEIGHT 1080
-
 struct Material {
   VkPipeline pipeline;
   VkPipelineLayout pipelineLayout;
@@ -56,9 +53,7 @@ public:
   bool isInitialized{false};
   u32 frameNumber{0};
 
-  VkExtent2D windowExtent{DEFAULT_WINDOW_WIDTH, DEFAULT_WINDOW_HEIGHT};
-
-  struct SDL_Window* window{nullptr};
+  VkExtent2D windowExtent{0, 0};
 
   //initializes everything in the engine
   void init();
@@ -66,11 +61,11 @@ public:
   //shuts down the engine
   void cleanup();
 
+  // update based on input
+  void update(const Input& input);
+
   //draw loop
   void draw();
-
-  //run main loop
-  void run();
 
   VkInstance instance; // Vulkan library handle
   VkDebugUtilsMessengerEXT debugMessenger; // Vulkan debug output handle
@@ -126,14 +121,6 @@ public:
     u32 cameraOffset;
   } globalBuffer;
 
-  struct {
-    bool up, down, forward, back, left, right;
-    bool button1, button2, button3;
-    bool switch1;
-    bool quit, fullscreen;
-    f32 mouseDeltaX, mouseDeltaY;
-  } input = {};
-
   MaterialCreateInfo materialInfos[3] = {
           materialDefaultLit,
           materialDefaulColor,
@@ -152,6 +139,7 @@ public:
 
 private:
 
+  // == initializations ==
   void initSDL();
 
   void initImgui();
@@ -168,8 +156,6 @@ private:
   void createFragmentShaderPipeline();
 
   void processInput();
-
-  void update();
 
   void initScene();
   void initCamera();
