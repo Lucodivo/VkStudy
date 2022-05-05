@@ -6,7 +6,7 @@ struct Input {
   bool switch1, switch2;
   bool quit, toggleFullScreen;
   bool windowSizeChanged, windowMinimized;
-  s32 mouseDeltaX, mouseDeltaY;
+  f32 mouseDeltaX, mouseDeltaY; // normalized to screen height
 };
 
 // Currently just a Singleton wrapper around SDL
@@ -58,6 +58,10 @@ public:
     }
   }
 
+  void setMouseMode(bool on) {
+    SDL_SetRelativeMouseMode(on ? SDL_FALSE : SDL_TRUE);
+  }
+
   const Input& processInput() {
     local_access bool altDown = false;
     bool altWasDown = altDown;
@@ -65,8 +69,8 @@ public:
     // reset input
     input.toggleFullScreen = false;
     input.windowSizeChanged = false;
-    input.mouseDeltaX = 0;
-    input.mouseDeltaY = 0;
+    s32 mouseDeltaPixelsX = 0;
+    s32 mouseDeltaPixelsY = 0;
 
     SDL_Event e;
     while (SDL_PollEvent(&e) != 0)
@@ -105,8 +109,8 @@ public:
           break;
         case SDL_MOUSEMOTION:
         {
-          input.mouseDeltaX += e.motion.xrel;
-          input.mouseDeltaY += e.motion.yrel;
+          mouseDeltaPixelsX += e.motion.xrel;
+          mouseDeltaPixelsY += e.motion.yrel;
           break;
         }
         case SDL_WINDOWEVENT:
@@ -150,6 +154,11 @@ public:
       ImGui_ImplSDL2_ProcessEvent(&e);
     }
 
+    // massage final data
+    f32 normalizeFactor = 2.0f / (f32)displayHeight;
+    input.mouseDeltaX = (f32)mouseDeltaPixelsX * normalizeFactor;
+    input.mouseDeltaY = (f32)mouseDeltaPixelsY * normalizeFactor;
+
     return input;
   }
 
@@ -175,6 +184,7 @@ public:
 private:
   SDL_Window* window = nullptr;
   Input input = {};
+  s32 displayWidth, displayHeight;
   bool fullScreen = false;
 
   WindowManager(s32 width, s32 height, s32 fullScreen) {
@@ -197,6 +207,17 @@ private:
     );
     SDL_CaptureMouse(SDL_TRUE);
     SDL_SetHintWithPriority(SDL_HINT_MOUSE_RELATIVE_MODE_WARP, "1", SDL_HINT_OVERRIDE);
+
+    SDL_DisplayMode displayMode;
+    if (SDL_GetDesktopDisplayMode(0, &displayMode) != 0)
+    {
+      std::cout << "SDL_GetDesktopDisplayMode failed: " << SDL_GetError() << std::endl;
+      displayWidth = 1920;
+      displayHeight = 1080;
+    } else {
+      displayWidth = displayMode.w;
+      displayHeight = displayMode.h;
+    }
   }
 
   ~WindowManager() {

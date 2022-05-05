@@ -19,8 +19,6 @@ void VulkanEngine::init() {
 
   WindowManager::getInstance().getExtent(&windowExtent.width, &windowExtent.height);
 
-  initCamera();
-
   initVulkan();
   initSwapchain();
   initCommands();
@@ -33,7 +31,7 @@ void VulkanEngine::init() {
   loadMeshes();
   initScene();
 
-  initImgui();
+  initImgui(); // move out?
 
   isInitialized = true;
 }
@@ -42,6 +40,7 @@ void VulkanEngine::cleanup() {
   VK_CHECK(vkDeviceWaitIdle(device));
 
   if(isInitialized) {
+    vkImguiDeinit(imguiInstance);
     cleanupSwapChain();
     mainDeletionQueue.flush();
 
@@ -62,7 +61,7 @@ void VulkanEngine::cleanup() {
   }
 }
 
-void VulkanEngine::draw() {
+void VulkanEngine::draw(const Camera& camera) {
   FrameData& frame = getCurrentFrame();
   VK_CHECK(vkWaitForFences(device, 1, &frame.renderFence, true, DEFAULT_NANOSEC_TIMEOUT));
   VK_CHECK(vkResetFences(device, 1, &frame.renderFence));
@@ -94,8 +93,8 @@ void VulkanEngine::draw() {
     vkCmdBeginRenderPass(cmd, &rpInfo, VK_SUBPASS_CONTENTS_INLINE);
 
     drawFragmentShader(cmd);
-    drawObjects(cmd, renderables.data(), (u32)renderables.size());
-    renderImgui(cmd);
+    drawObjects(cmd, camera,renderables.data(), (u32)renderables.size());
+    vkImguiRender(cmd);
 
     // finishes render and transitions image to layout specified in renderpass
     vkCmdEndRenderPass(cmd);
@@ -140,194 +139,13 @@ void VulkanEngine::draw() {
   frameNumber++;
 }
 
-void VulkanEngine::quickDebugText(const char* fmt, ...) const {
-  if(imguiState.showQuickDebug) {
-    va_list args;
-    va_start(args, fmt);
-    ImGui::TextV(fmt, args);
-    va_end(args);
-  }
-}
-
-void VulkanEngine::quickDebugFloat(const char* label, float* v, float v_min, float v_max, const char* format, ImGuiSliderFlags flags) const {
-  if(imguiState.showQuickDebug) {
-    ImGui::SliderFloat(label, v, v_min, v_max, format, flags);
-  }
-}
-
-void VulkanEngine::update(const Input& input) {
-  startImguiFrame();
-
-  local_access f32 moveSpeed = 0.5f;
-  local_access f32 turnSpeed = 0.5f;
-  local_access bool editMode = true; // NOTE: We assume edit mode is enabled by default
-
-  vec3 cameraDelta = {};
-  f32 yawDelta = 0.0f;
-  f32 pitchDelta = 0.0f;
-
-  if(editMode != input.switch1) {
-    editMode = input.switch1;
-    SDL_SetRelativeMouseMode(editMode ? SDL_FALSE : SDL_TRUE);
-  }
-
-  // Used to keep camera at constant speed regardless of direction
-  const vec4 invSqrt = {
-          0.0f,
-          1.0f,
-          0.7071067f,
-          0.5773502f
-  };
-  u32 invSqrtIndex = 0;
-
-  if(input.left ^ input.right) {
-    invSqrtIndex++;
-    if(input.left) {
-      cameraDelta.x = -1.0f;
-    } else {
-      cameraDelta.x = 1.0f;
-    }
-  }
-
-  if(input.back ^ input.forward) {
-    invSqrtIndex++;
-    if(input.back) {
-      cameraDelta.y = -1.0f;
-    } else {
-      cameraDelta.y = 1.0f;
-    }
-  }
-
-  if(input.down ^ input.up) {
-    invSqrtIndex++;
-    if(input.down) {
-      cameraDelta.z = -1.0f;
-    } else {
-      cameraDelta.z = 1.0f;
-    }
-  }
-
-  if(!editMode && (input.mouseDeltaX != 0 || input.mouseDeltaY != 0)) {
-    f32 turnSpd = turnSpeed * 10.0f;
-    vec2 mouseDelta_normalized = {
-            (f32)input.mouseDeltaX / windowExtent.width,
-            (f32)input.mouseDeltaY / windowExtent.height
-    };
-    camera.turn(mouseDelta_normalized.x * turnSpd, mouseDelta_normalized.y * turnSpd);
-  }
-
-  quickDebugFloat("move speed", &moveSpeed, 0.1f, 1.0f, "%.2f");
-
-  camera.move(cameraDelta * (invSqrt.val[invSqrtIndex] * moveSpeed));
+void VulkanEngine::initFrame(const bool showRenderDebugInfo) {
+  renderDebugInfoRequestedForFrame = showRenderDebugInfo;
+  vkImguiStartFrame();
 }
 
 FrameData& VulkanEngine::getCurrentFrame() {
   return frames[frameNumber % FRAME_OVERLAP];
-}
-
-void VulkanEngine::initImgui() {
-  IMGUI_CHECKVERSION();
-  ImGui::CreateContext();
-  ImGuiIO& io = ImGui::GetIO();
-  (void)io;
-  //io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;     // Enable Keyboard Controls
-  //io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;      // Enable Gamepad Controls
-
-  io.FontGlobalScale = 2.0f;
-
-  // Setup Dear ImGui style
-  ImGui::StyleColorsDark();
-  //ImGui::StyleColorsClassic();
-
-  ImGui_ImplVulkanH_Window imguiWindow{};
-  imguiWindow.Width = windowExtent.width;
-  imguiWindow.Height = windowExtent.height;
-  imguiWindow.Swapchain = swapchain;
-  imguiWindow.Surface = surface;
-  imguiWindow.SurfaceFormat.format = swapchainImageFormat;
-  imguiWindow.SurfaceFormat.colorSpace = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR;
-  imguiWindow.PresentMode = PRESENT_MODE;
-  imguiWindow.RenderPass = renderPass;
-  imguiWindow.ClearEnable = true;
-  imguiWindow.ClearValue = colorClearValue;
-  imguiWindow.FrameIndex = 0;
-  imguiWindow.ImageCount = (u32)swapchainImageViews.size();
-  imguiWindow.SemaphoreIndex = 0;
-  imguiWindow.Frames = nullptr;
-  imguiWindow.FrameSemaphores = nullptr;
-
-  // Create Descriptor Pool
-  VkDescriptorPool imguiDescriptorPool;
-  {
-    VkDescriptorPoolSize poolSizes[] =
-            {
-                    {VK_DESCRIPTOR_TYPE_SAMPLER,                1000},
-                    {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1000},
-                    {VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,          1000},
-                    {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,          1000},
-                    {VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER,   1000},
-                    {VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER,   1000},
-                    {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,         1000},
-                    {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,         1000},
-                    {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, 1000},
-                    {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC, 1000},
-                    {VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT,       1000}
-            };
-    VkDescriptorPoolCreateInfo poolInfo = {};
-    poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-    poolInfo.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
-    poolInfo.maxSets = 1000 * IM_ARRAYSIZE(poolSizes);
-    poolInfo.poolSizeCount = (uint32_t)IM_ARRAYSIZE(poolSizes);
-    poolInfo.pPoolSizes = poolSizes;
-    VK_CHECK(vkCreateDescriptorPool(device, &poolInfo, nullptr, &imguiDescriptorPool));
-  }
-
-  WindowManager::getInstance().initImguiForWindow();
-  ImGui_ImplVulkan_InitInfo initInfo = {};
-  initInfo.Instance = instance;
-  initInfo.PhysicalDevice = chosenGPU;
-  initInfo.Device = device;
-  initInfo.QueueFamily = graphicsQueueFamily;
-  initInfo.Queue = graphicsQueue;
-  initInfo.PipelineCache = VK_NULL_HANDLE;
-  initInfo.DescriptorPool = imguiDescriptorPool;
-  initInfo.MinImageCount = 3;
-  initInfo.ImageCount = (u32)swapchainImageViews.size();
-  initInfo.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
-  ImGui_ImplVulkan_Init(&initInfo, imguiWindow.RenderPass);
-
-  // Upload Fonts
-  {
-    // Use any command queue
-    VK_CHECK(vkResetCommandPool(device, frames[0].commandPool, 0));
-    VkCommandBufferBeginInfo beginInfo = {};
-    beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-    beginInfo.flags |= VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-    VK_CHECK(vkBeginCommandBuffer(frames[0].mainCommandBuffer, &beginInfo));
-
-    ImGui_ImplVulkan_CreateFontsTexture(frames[0].mainCommandBuffer);
-
-    VkSubmitInfo endInfo = {};
-    endInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-    endInfo.commandBufferCount = 1;
-    endInfo.pCommandBuffers = &frames[0].mainCommandBuffer;
-    VK_CHECK(vkEndCommandBuffer(frames[0].mainCommandBuffer));
-    VK_CHECK(vkQueueSubmit(graphicsQueue, 1, &endInfo, VK_NULL_HANDLE));
-
-    VK_CHECK(vkDeviceWaitIdle(device));
-    ImGui_ImplVulkan_DestroyFontUploadObjects();
-  }
-
-  imguiState = {};
-  imguiState.showMainMenu = true;
-  imguiState.showFPS = true;
-  imguiState.stringRingBuffer = createCStringRingBuffer(50, 256);
-
-  mainDeletionQueue.pushFunction([=]() {
-    vkDestroyDescriptorPool(device, imguiDescriptorPool, nullptr);
-    ImGui_ImplVulkan_Shutdown();
-    deleteCStringRingBuffer(imguiState.stringRingBuffer);
-  });
 }
 
 void VulkanEngine::initVulkan() {
@@ -867,12 +685,6 @@ void VulkanEngine::initScene() {
   });
 }
 
-void VulkanEngine::initCamera() {
-  camera = {};
-  camera.pos = {0.f, -50.f, 20.f};
-  camera.setForward({0.f, 1.f, 0.f});
-}
-
 void VulkanEngine::loadMeshes() {
   // Note: Currently just loading all meshes, not sustainable in long run
   BakedAssetData* bakedMeshes = (BakedAssetData*)(&bakedMeshAssetData);
@@ -995,7 +807,7 @@ void VulkanEngine::drawFragmentShader(VkCommandBuffer cmd) {
   vkCmdDraw(cmd, 6, 1, 0, 0);
 }
 
-void VulkanEngine::drawObjects(VkCommandBuffer cmd, RenderObject* firstObject, u32 objectCount) {
+void VulkanEngine::drawObjects(VkCommandBuffer cmd, const Camera& camera, RenderObject* firstObject, u32 objectCount) {
   FrameData& frame = getCurrentFrame();
 
   // camera data
@@ -1043,7 +855,7 @@ void VulkanEngine::drawObjects(VkCommandBuffer cmd, RenderObject* firstObject, u
   objectData = nullptr;
   vmaUnmapMemory(vmaAllocator, frame.objectBuffer.vmaAllocation);
   f64 ssboUploadTimeMs = StopTimer(ssboUploadTimer);
-  quickDebugText("Uploading SSBO data: %5.5f ms", ssboUploadTimeMs);
+  vkImguiQuickDebugText(renderDebugInfoRequestedForFrame, "Uploading SSBO data: %5.5f ms", ssboUploadTimeMs);
 
   VkViewport viewport{};
   viewport.x = 0;
@@ -1122,46 +934,7 @@ void VulkanEngine::drawObjects(VkCommandBuffer cmd, RenderObject* firstObject, u
   }
 
   f64 objectCmdBufferFillMs = StopTimer(objectCmdBufferFillTimer);
-  quickDebugText("Filling command buffer for object draws: %5.5f ms", objectCmdBufferFillMs);
-}
-
-void VulkanEngine::startImguiFrame() {
-  ImGui_ImplVulkan_NewFrame();
-  ImGui_ImplSDL2_NewFrame();
-  ImGui::NewFrame();
-
-  if(imguiState.showMainMenu) {
-    if(ImGui::BeginMainMenuBar()) {
-      if(ImGui::BeginMenu("Windows")) {
-        ImGui::MenuItem("Quick Debug Log", NULL, &imguiState.showQuickDebug);
-        ImGui::MenuItem("General Debug Text", NULL, &imguiState.showGeneralDebugText);
-        ImGui::MenuItem("Main Debug Menu", NULL, &imguiState.showMainMenu);
-        ImGui::MenuItem("FPS", NULL, &imguiState.showFPS);
-        ImGui::EndMenu();
-      }ImGui::EndMainMenuBar();
-    }
-  }
-
-  imguiTextWindow("General Debug", imguiState.stringRingBuffer, imguiState.showGeneralDebugText);
-
-  local_access Timer frameTimer;
-  f64 frameTimeMs = StopTimer(frameTimer); // for last frame
-  f64 frameFPS = 1000.0 / frameTimeMs;
-  if(imguiState.showFPS) {
-    const ImGuiWindowFlags textNoFrills = ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoResize;
-    if(ImGui::Begin("FPS", &imguiState.showFPS, textNoFrills)) {
-      ImGui::Text("%5.2f ms | %3.1f fps", frameTimeMs, frameFPS);
-    }ImGui::End();
-  }
-  StartTimer(frameTimer); // for current frame
-}
-
-void VulkanEngine::renderImgui(VkCommandBuffer cmd) {
-  // Rendering
-  ImGui::Render();
-
-  // Record dear imgui primitives into command buffer
-  ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), cmd);
+  vkImguiQuickDebugText(renderDebugInfoRequestedForFrame, "Filling command buffer for object draws: %5.5f ms", objectCmdBufferFillMs);
 }
 
 void VulkanEngine::loadImages() {
@@ -1199,4 +972,18 @@ void VulkanEngine::loadImages() {
       loadedTextures.erase(bakedTextureData.name);
     }
   });
+}
+
+void VulkanEngine::initImgui() {
+  VkImguiCreateInfo imguiCI;
+  imguiCI.instance = instance;
+  imguiCI.device = device;
+  imguiCI.chosenGPU = chosenGPU;
+  imguiCI.fontTextUploadCommandBuffer = frames[0].mainCommandBuffer;
+  imguiCI.graphicsQueue = graphicsQueue;
+  imguiCI.graphicsQueueFamily = graphicsQueueFamily;
+  imguiCI.renderPass = renderPass;
+  imguiCI.swapChainImageCount = (u32)swapchainImageViews.size();
+
+  vkImguiCreateInstance(&imguiCI, &imguiInstance);
 }

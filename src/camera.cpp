@@ -60,7 +60,7 @@ void Camera::lookAt(vec3 focusPoint) {
   setForward(focusPoint - pos);
 }
 
-mat4 Camera::getViewMatrix() {
+mat4 Camera::getViewMatrix() const {
   mat4 measure{
           right.x, up.x, -forward.x, 0.f,
           right.y, up.y, -forward.y, 0.f,

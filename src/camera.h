@@ -11,7 +11,7 @@ public:
 
   void turn(f32 yawDelta, f32 pitchDelta);
 
-  mat4 getViewMatrix();
+  mat4 getViewMatrix() const;
 
   void setForward(vec3 forward);
   void lookAt(vec3 focusPoint);

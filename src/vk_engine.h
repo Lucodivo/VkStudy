@@ -62,10 +62,10 @@ public:
   void cleanup();
 
   // update based on input
-  void update(const Input& input);
+  void initFrame(const bool showRenderDebugInfo);
 
   //draw loop
-  void draw();
+  void draw(const Camera& camera);
 
   VkInstance instance; // Vulkan library handle
   VkDebugUtilsMessengerEXT debugMessenger; // Vulkan debug output handle
@@ -106,8 +106,6 @@ public:
   VkPipeline fragmentShaderPipeline;
   VkPipelineLayout fragmentShaderPipelineLayout;
 
-  Camera camera;
-
   VkDescriptorSetLayout globalDescSetLayout;
   VkDescriptorSetLayout objectDescSetLayout;
   VkDescriptorSetLayout singleTextureSetLayout;
@@ -129,21 +127,9 @@ public:
 
   UploadContext uploadContext;
 
-  struct {
-    bool showGeneralDebugText;
-    bool showQuickDebug;
-    bool showMainMenu;
-    bool showFPS;
-    CStringRingBuffer stringRingBuffer;
-  } imguiState;
-
 private:
 
   // == initializations ==
-  void initSDL();
-
-  void initImgui();
-
   void initVulkan();
   void initSwapchain();
   void initCommands();
@@ -155,10 +141,7 @@ private:
   void initPipelines();
   void createFragmentShaderPipeline();
 
-  void processInput();
-
   void initScene();
-  void initCamera();
 
   void cleanupSwapChain();
   void recreateSwapChain();
@@ -171,15 +154,11 @@ private:
   Material* getMaterial(const char* name); //returns nullptr if it can't be found
 
   void drawFragmentShader(VkCommandBuffer cmd);
-  void drawObjects(VkCommandBuffer cmd, RenderObject* first, u32 count);
-
-  void startImguiFrame();
-  void renderImgui(VkCommandBuffer cmd);
+  void drawObjects(VkCommandBuffer cmd, const Camera& camera, RenderObject* first, u32 count);
 
   FrameData& getCurrentFrame();
 
-  // ImGui functions for no thought debug window options
-  // Not for anything but messily pushing info or adjusting values
-  void quickDebugFloat(const char* label, float* v, float v_min, float v_max, const char* format = "%.3f", ImGuiSliderFlags flags = 0) const;
-  void quickDebugText(const char* fmt, ...) const;
+  void initImgui();
+  VkImguiInstance imguiInstance;
+  bool renderDebugInfoRequestedForFrame = false; // NOTE: Do NOT modify this value outside of initFrame()
 };
