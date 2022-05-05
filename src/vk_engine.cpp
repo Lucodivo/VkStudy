@@ -25,6 +25,7 @@ void VulkanEngine::init() {
   initDefaultRenderpass();
   initFramebuffers();
   initSyncStructures();
+  initSamplers();
   initDescriptors();
   initPipelines();
   loadImages();
@@ -487,6 +488,13 @@ void VulkanEngine::initDescriptors() {
 
   vkCreateDescriptorSetLayout(device, &descSetCreateInfo, nullptr, &singleTextureSetLayout);
 
+  //allocate the descriptor set for single-texture to use on the material
+  singleTexDescSetAllocInfo.pNext = nullptr;
+  singleTexDescSetAllocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+  singleTexDescSetAllocInfo.descriptorPool = descriptorPool;
+  singleTexDescSetAllocInfo.descriptorSetCount = 1;
+  singleTexDescSetAllocInfo.pSetLayouts = &singleTextureSetLayout;
+
   mainDeletionQueue.pushFunction([=]() {
     // free buffers
     vmaDestroyBuffer(vmaAllocator, globalBuffer.buffer.vkBuffer, globalBuffer.buffer.vmaAllocation);
@@ -594,95 +602,90 @@ void VulkanEngine::createPipeline(MaterialCreateInfo matInfo) {
   createMaterial(pipeline, pipelineLayout, matInfo.name);
 }
 
+void VulkanEngine::initSamplers() {
+  VkSamplerCreateInfo blockySamplerCI = vkinit::samplerCreateInfo(VK_FILTER_NEAREST);
+  vkCreateSampler(device, &blockySamplerCI, nullptr, &blockySampler);
+
+  VkSamplerCreateInfo linearSamplerCI = vkinit::samplerCreateInfo(VK_FILTER_LINEAR);
+  vkCreateSampler(device, &linearSamplerCI, nullptr, &linearSampler);
+
+  mainDeletionQueue.pushFunction([=]() {
+    vkDestroySampler(device, blockySampler, nullptr);
+    vkDestroySampler(device, linearSampler, nullptr);
+  });
+}
+
+void VulkanEngine::attachSingleLoadedTexToNewDescSet(VkSampler sampler, const char* loadedTex, VkDescriptorSet* outDescSet) {
+  vkAllocateDescriptorSets(device, &singleTexDescSetAllocInfo, outDescSet);
+
+  //write to the descriptor set so that it points to our minecraft_diffuse texture
+  VkDescriptorImageInfo imageBufferInfo;
+  imageBufferInfo.sampler = blockySampler;
+  imageBufferInfo.imageView = loadedTextures[loadedTex].imageView;
+  imageBufferInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+
+  VkWriteDescriptorSet texture = vkinit::writeDescriptorImage(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, *outDescSet, &imageBufferInfo, 0);
+
+  vkUpdateDescriptorSets(device, 1, &texture, 0, nullptr);
+}
+
 void VulkanEngine::initScene() {
 
-  // Samplers //
-  VkSamplerCreateInfo samplerInfo = vkinit::samplerCreateInfo(VK_FILTER_NEAREST);
-
-  VkSampler blockySampler;
-  vkCreateSampler(device, &samplerInfo, nullptr, &blockySampler);
-
-  //allocate the descriptor set for single-texture to use on the material
-  VkDescriptorSetAllocateInfo allocInfo = {};
-  allocInfo.pNext = nullptr;
-  allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-  allocInfo.descriptorPool = descriptorPool;
-  allocInfo.descriptorSetCount = 1;
-  allocInfo.pSetLayouts = &singleTextureSetLayout;
-
-  auto attachTexture = [&](VkSampler sampler, const char* loadedTexture, VkDescriptorSet* textureSet) -> void {
-    vkAllocateDescriptorSets(device, &allocInfo, textureSet);
-
-    //write to the descriptor set so that it points to our minecraft_diffuse texture
-    VkDescriptorImageInfo imageBufferInfo;
-    imageBufferInfo.sampler = blockySampler;
-    imageBufferInfo.imageView = loadedTextures[loadedTexture].imageView;
-    imageBufferInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-
-    VkWriteDescriptorSet texture = vkinit::writeDescriptorImage(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, *textureSet, &imageBufferInfo, 0);
-
-    vkUpdateDescriptorSets(device, 1, &texture, 0, nullptr);
-  };
-
   // Renderables //
-  // Mr. Saturn
-	RenderObject mrSaturnObject;
-  mrSaturnObject.mesh = getMesh(bakedMeshAssetData.mr_saturn.name);
-  mrSaturnObject.materialName = materialDefaultLit.name;
-  mrSaturnObject.material = getMaterial(mrSaturnObject.materialName);
-	f32 mrSaturnScale = 20.0f;
-	mat4 mrSaturnScaleMat = scale_mat4(vec3{mrSaturnScale, mrSaturnScale, mrSaturnScale});
-	mat4 mrSaturnTranslationMat = translate_mat4(vec3{0.0f, 0.0f, -mrSaturnScale * 2.0f});
-	mat4 mrSaturnTransform = mrSaturnTranslationMat * mrSaturnScaleMat;
-  mrSaturnObject.modelMatrix = mrSaturnTransform;
-  mrSaturnObject.defaultColor = vec4{155.0f / 255.0f, 115.0f / 255.0f, 96.0f / 255.0f, 1.0f};
-  attachTexture(blockySampler, bakedTextureAssetData.single_white_pixel.name, &mrSaturnObject.textureSet);
-	renderables.push_back(mrSaturnObject);
-
-  // Cubes //
-	RenderObject cubeObject;
-  cubeObject.mesh = getMesh(bakedMeshAssetData.cube.name);
-  cubeObject.materialName = materialDefaulColor.name;
-  cubeObject.material = getMaterial(cubeObject.materialName);
-  attachTexture(blockySampler, bakedTextureAssetData.single_white_pixel.name, &cubeObject.textureSet);
-	f32 envScale = 0.2f;
-	mat4 envScaleMat = scale_mat4(vec3{envScale, envScale, envScale});
-	for (s32 x = -16; x <= 16; ++x)
-	for (s32 y = -16; y <= 16; ++y)
-	for (s32 z = 0; z <= 32; ++z) {
-		vec3 pos{ (f32)x, (f32)y, (f32)z };
-		vec3 color = (pos + vec3{16.0f, 16.0f, 0.0f}) / vec3{32.0f, 32.0f, 32.0f};
-		mat4 translationMat = translate_mat4(pos);
-    cubeObject.modelMatrix = translationMat * envScaleMat;
-    cubeObject.defaultColor = vec4{color.r, color.g, color.b, 1.0f}; // TODO: lookup how glm accomplishes vec4{vec3, f32} construction
-		renderables.push_back(cubeObject);
-	}
+//  // Mr. Saturn
+//	RenderObject mrSaturnObject;
+//  mrSaturnObject.mesh = getMesh(bakedMeshAssetData.mr_saturn.name);
+//  mrSaturnObject.materialName = materialDefaultLit.name;
+//  mrSaturnObject.material = getMaterial(mrSaturnObject.materialName);
+//	f32 mrSaturnScale = 20.0f;
+//	mat4 mrSaturnScaleMat = scale_mat4(vec3{mrSaturnScale, mrSaturnScale, mrSaturnScale});
+//	mat4 mrSaturnTranslationMat = translate_mat4(vec3{0.0f, 0.0f, -mrSaturnScale * 2.0f});
+//	mat4 mrSaturnTransform = mrSaturnTranslationMat * mrSaturnScaleMat;
+//  mrSaturnObject.modelMatrix = mrSaturnTransform;
+//  mrSaturnObject.defaultColor = vec4{155.0f / 255.0f, 115.0f / 255.0f, 96.0f / 255.0f, 1.0f};
+//  attachTexture(blockySampler, bakedTextureAssetData.single_white_pixel.name, &mrSaturnObject.textureSet);
+//	renderables.push_back(mrSaturnObject);
+//
+//  // Cubes //
+//	RenderObject cubeObject;
+//  cubeObject.mesh = getMesh(bakedMeshAssetData.cube.name);
+//  cubeObject.materialName = materialDefaulColor.name;
+//  cubeObject.material = getMaterial(cubeObject.materialName);
+//  attachTexture(blockySampler, bakedTextureAssetData.single_white_pixel.name, &cubeObject.textureSet);
+//	f32 envScale = 0.2f;
+//	mat4 envScaleMat = scale_mat4(vec3{envScale, envScale, envScale});
+//	for (s32 x = -16; x <= 16; ++x)
+//	for (s32 y = -16; y <= 16; ++y)
+//	for (s32 z = 0; z <= 32; ++z) {
+//		vec3 pos{ (f32)x, (f32)y, (f32)z };
+//		vec3 color = (pos + vec3{16.0f, 16.0f, 0.0f}) / vec3{32.0f, 32.0f, 32.0f};
+//		mat4 translationMat = translate_mat4(pos);
+//    cubeObject.modelMatrix = translationMat * envScaleMat;
+//    cubeObject.defaultColor = vec4{color.r, color.g, color.b, 1.0f}; // TODO: lookup how glm accomplishes vec4{vec3, f32} construction
+//		renderables.push_back(cubeObject);
+//	}
 
   // Minecraft World
-//  RenderObject minecraftObject;
-//  minecraftObject.mesh = getMesh(bakedMeshAssetData.lost_empire.name);
-//  minecraftObject.materialName = materialTextured.name;
-//  minecraftObject.material = getMaterial(minecraftObject.materialName);
-//  minecraftObject.defaultColor = vec4{50.0f, 0.0f, 0.0f, 1.0f};
-//  attachTexture(blockySampler, bakedTextureAssetData.lost_empire_RGBA.name, &minecraftObject.textureSet);
-//
-//  f32 minecraftScale = 1.0f;
-//  mat4 minecraftScaleMat = scale_mat4(vec3{minecraftScale, minecraftScale, minecraftScale});
-//  mat4 minecraftRotationMat = rotate_mat4(RadiansPerDegree * 90.0f, vec3{1.0f, 0.0f, 0.0f});
-//  mat4 minecraftTranslationMat = translate_mat4(vec3{0.0f, 0.0f, 0.0f});
-//  mat4 minecraftTransform = minecraftTranslationMat * minecraftRotationMat * minecraftScaleMat;
-//  minecraftObject.modelMatrix = minecraftTransform;
-//
-//  renderables.push_back(minecraftObject);
+  RenderObject minecraftObject;
+  minecraftObject.mesh = getMesh(bakedMeshAssetData.lost_empire.name);
+  minecraftObject.materialName = materialTextured.name;
+  minecraftObject.material = getMaterial(minecraftObject.materialName);
+  minecraftObject.defaultColor = vec4{50.0f, 0.0f, 0.0f, 1.0f};
+  attachSingleLoadedTexToNewDescSet(blockySampler, bakedTextureAssetData.lost_empire_RGBA.name, &minecraftObject.textureSet);
+
+  f32 minecraftScale = 1.0f;
+  mat4 minecraftScaleMat = scale_mat4(vec3{minecraftScale, minecraftScale, minecraftScale});
+  mat4 minecraftRotationMat = rotate_mat4(RadiansPerDegree * 90.0f, vec3{1.0f, 0.0f, 0.0f});
+  mat4 minecraftTranslationMat = translate_mat4(vec3{0.0f, 0.0f, 0.0f});
+  mat4 minecraftTransform = minecraftTranslationMat * minecraftRotationMat * minecraftScaleMat;
+  minecraftObject.modelMatrix = minecraftTransform;
+
+  renderables.push_back(minecraftObject);
 
   // TODO: sort objects by material to minimize binding pipelines
   //std::sort(renderables.begin(), renderables.end(), [](const RenderObject& a, const RenderObject& b) {
   //	return a.material->pipeline > b.material->pipeline;
   //});
-
-  mainDeletionQueue.pushFunction([=]() {
-    vkDestroySampler(device, blockySampler, nullptr);
-  });
 }
 
 void VulkanEngine::loadMeshes() {

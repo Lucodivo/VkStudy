@@ -103,12 +103,16 @@ public:
   std::unordered_map<std::string, Mesh> meshes;
   std::unordered_map<std::string, Texture> loadedTextures;
 
+  VkSampler blockySampler;
+  VkSampler linearSampler;
+
   VkPipeline fragmentShaderPipeline;
   VkPipelineLayout fragmentShaderPipelineLayout;
 
   VkDescriptorSetLayout globalDescSetLayout;
   VkDescriptorSetLayout objectDescSetLayout;
   VkDescriptorSetLayout singleTextureSetLayout;
+  VkDescriptorSetAllocateInfo singleTexDescSetAllocInfo;
   VkDescriptorPool descriptorPool;
 
   VkDescriptorSet globalDescriptorSet;
@@ -136,12 +140,14 @@ private:
   void initDefaultRenderpass();
   void initFramebuffers();
   void initSyncStructures();
+  void initSamplers();
   void initDescriptors();
   void createPipeline(MaterialCreateInfo matInfo);
   void initPipelines();
   void createFragmentShaderPipeline();
 
   void initScene();
+  void attachSingleLoadedTexToNewDescSet(VkSampler sampler, const char* loadedTex, VkDescriptorSet* outDescSet);
 
   void cleanupSwapChain();
   void recreateSwapChain();

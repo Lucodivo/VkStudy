@@ -59,6 +59,14 @@ target_sources(lz4 PRIVATE
 )
 target_include_directories(lz4 PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/lz4" )
 
+# inih
+add_library(inih STATIC)
+target_sources(inih PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/inih/ini.h"
+        "${CMAKE_CURRENT_SOURCE_DIR}/inih/ini.c"
+        )
+target_include_directories(inih PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/inih" )
+
 # DearImgui
 add_library(imgui STATIC)
 target_include_directories(imgui PUBLIC imgui)

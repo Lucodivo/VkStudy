@@ -26,6 +26,8 @@
 #define VMA_IMPLEMENTATION
 #include <vk_mem_alloc.h>
 
+#include <ini.h>
+
 #include "types.h"
 #include "vk_types.h"
 #include "window_manager.h"

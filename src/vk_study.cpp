@@ -4,10 +4,15 @@
 #define DEFAULT_WINDOW_HEIGHT 1080
 
 struct ImguiState {
-  bool showGeneralDebugText;
-  bool showQuickDebug;
-  bool showMainMenu;
-  bool showFPS;
+  union {
+    bool showWindows[4];
+    struct {
+      bool generalDebugText;
+      bool quickDebug;
+      bool mainMenu;
+      bool fps;
+    } show;
+  };
   CStringRingBuffer generalDebugTextRingBuffer;
 
   ImguiState() {
@@ -18,6 +23,49 @@ struct ImguiState {
     deleteCStringRingBuffer(generalDebugTextRingBuffer);
   }
 };
+
+const char* saveFileName = "vkstudy.ini";
+const char* saveImguiStateHeader = "ImguiState";
+const char* saveImguiShowBools = "ShowBools";
+void saveConfig(const ImguiState& imguiState) {
+  FILE* saveFile = fopen(saveFileName, "w");
+
+  fputc('[', saveFile);
+  fputs(saveImguiStateHeader, saveFile);
+  fputs("]\n", saveFile);
+
+  fputs(saveImguiShowBools, saveFile);
+  fputs("=", saveFile);
+  for(int i = 0; i < ArrayCount(ImguiState::showWindows); ++i) {
+    bool showBool = imguiState.showWindows[i];
+    char boolCharValue = showBool ? '1' : '0';
+    fputc(boolCharValue, saveFile);
+  }
+  fputs("\n\n", saveFile);
+
+  fclose(saveFile);
+}
+
+static int saveFileParserCallback(void* user, const char* section, const char* name, const char* value) {
+  ImguiState* imguiState = (ImguiState*)user;
+
+  #define MATCH(s, n) strcmp(section, s) == 0 && strcmp(name, n) == 0
+  if (MATCH(saveImguiStateHeader, saveImguiShowBools)) {
+    u32 iter = 0;
+    while(iter < ArrayCount(ImguiState::showWindows) && value[iter] != '\0') {
+      imguiState->showWindows[iter++] = value[iter] != '0';
+    }
+  } else {
+    return 0;  /* unknown section/name, error */
+  }
+  return 1;
+}
+
+void loadConfig(ImguiState* imguiState) {
+  if (ini_parse(saveFileName, saveFileParserCallback, imguiState) < 0) {
+    printf("Can't load 'test.ini'\n");
+  }
+}
 
 struct AppState {
   Input input;
@@ -35,10 +83,12 @@ int main(int argc, char* argv[]) {
   state.camera.pos = {0.f, -50.f, 20.f};
   state.camera.setForward({0.f, 1.f, 0.f});
 
-  state.imguiState.showQuickDebug = false;
-  state.imguiState.showFPS = true;
-  state.imguiState.showGeneralDebugText = false;
-  state.imguiState.showMainMenu = true;
+  state.imguiState.show.quickDebug = false;
+  state.imguiState.show.fps = true;
+  state.imguiState.show.generalDebugText = false;
+  state.imguiState.show.mainMenu = true;
+
+  loadConfig(&state.imguiState);
 
   state.editMode = true; // NOTE: We assume edit mode is enabled by default
 
@@ -48,12 +98,13 @@ int main(int argc, char* argv[]) {
   vkEngine.init();
 
   while(!state.input.quit) {
-    vkEngine.initFrame(state.imguiState.showQuickDebug);
+    vkEngine.initFrame(state.imguiState.show.quickDebug);
     update(state, windowManager);
     vkEngine.draw(state.camera);
   }
 
   vkEngine.cleanup();
+  saveConfig(state.imguiState);
 
   return 0;
 }
@@ -124,30 +175,30 @@ void update (AppState& state, WindowManager& windowManager) {
                       state.input.mouseDeltaY * cameraTurnSpeed);
   }
 
-  vkImguiQuickDebugFloat(state.imguiState.showQuickDebug, "move speed", &cameraMoveSpeed, 0.1f, 1.0f, "%.2f");
+  vkImguiQuickDebugFloat(state.imguiState.show.quickDebug, "move speed", &cameraMoveSpeed, 0.1f, 1.0f, "%.2f");
 
   state.camera.move(cameraDelta * (invSqrt.val[invSqrtIndex] * cameraMoveSpeed));
 
-  if(state.imguiState.showMainMenu) {
+  if(state.imguiState.show.mainMenu) {
     if(ImGui::BeginMainMenuBar()) {
       if(ImGui::BeginMenu("Windows")) {
-        ImGui::MenuItem("Quick Debug Log", NULL, &state.imguiState.showQuickDebug);
-        ImGui::MenuItem("General Debug Text", NULL, &state.imguiState.showGeneralDebugText);
-        ImGui::MenuItem("Main Debug Menu", NULL, &state.imguiState.showMainMenu);
-        ImGui::MenuItem("FPS", NULL, &state.imguiState.showFPS);
+        ImGui::MenuItem("Quick Debug Log", NULL, &state.imguiState.show.quickDebug);
+        ImGui::MenuItem("General Debug Text", NULL, &state.imguiState.show.generalDebugText);
+        ImGui::MenuItem("Main Debug Menu", NULL, &state.imguiState.show.mainMenu);
+        ImGui::MenuItem("FPS", NULL, &state.imguiState.show.fps);
         ImGui::EndMenu();
       }ImGui::EndMainMenuBar();
     }
   }
 
-  vkImguiTextWindow("General Debug", state.imguiState.generalDebugTextRingBuffer, state.imguiState.showGeneralDebugText);
+  vkImguiTextWindow("General Debug", state.imguiState.generalDebugTextRingBuffer, state.imguiState.show.generalDebugText);
 
   local_access Timer frameTimer;
   f64 frameTimeMs = StopTimer(frameTimer); // for last frame
   f64 frameFPS = 1000.0 / frameTimeMs;
-  if(state.imguiState.showFPS) {
+  if(state.imguiState.show.fps) {
     const ImGuiWindowFlags textNoFrills = ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoResize;
-    if(ImGui::Begin("FPS", &state.imguiState.showFPS, textNoFrills)) {
+    if(ImGui::Begin("FPS", &state.imguiState.show.fps, textNoFrills)) {
       ImGui::Text("%5.2f ms | %3.1f fps", frameTimeMs, frameFPS);
     }ImGui::End();
   }
