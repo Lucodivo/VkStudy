@@ -176,6 +176,10 @@ public:
     ImGui_ImplSDL2_InitForVulkan(window);
   }
 
+  void setSwitch1(bool switchVal) {
+    input.switch1 = switchVal;
+  }
+
   // Make sure these methods are inaccessible (especially from outside),
   // otherwise, you may accidentally get copies of singleton.
   WindowManager(WindowManager const&) = delete;

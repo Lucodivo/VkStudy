@@ -24,49 +24,6 @@ struct ImguiState {
   }
 };
 
-const char* saveFileName = "vkstudy.ini";
-const char* saveImguiStateHeader = "ImguiState";
-const char* saveImguiShowBools = "ShowBools";
-void saveConfig(const ImguiState& imguiState) {
-  FILE* saveFile = fopen(saveFileName, "w");
-
-  fputc('[', saveFile);
-  fputs(saveImguiStateHeader, saveFile);
-  fputs("]\n", saveFile);
-
-  fputs(saveImguiShowBools, saveFile);
-  fputs("=", saveFile);
-  for(int i = 0; i < ArrayCount(ImguiState::showWindows); ++i) {
-    bool showBool = imguiState.showWindows[i];
-    char boolCharValue = showBool ? '1' : '0';
-    fputc(boolCharValue, saveFile);
-  }
-  fputs("\n\n", saveFile);
-
-  fclose(saveFile);
-}
-
-static int saveFileParserCallback(void* user, const char* section, const char* name, const char* value) {
-  ImguiState* imguiState = (ImguiState*)user;
-
-  #define MATCH(s, n) strcmp(section, s) == 0 && strcmp(name, n) == 0
-  if (MATCH(saveImguiStateHeader, saveImguiShowBools)) {
-    u32 iter = 0;
-    while(iter < ArrayCount(ImguiState::showWindows) && value[iter] != '\0') {
-      imguiState->showWindows[iter++] = value[iter] != '0';
-    }
-  } else {
-    return 0;  /* unknown section/name, error */
-  }
-  return 1;
-}
-
-void loadConfig(ImguiState* imguiState) {
-  if (ini_parse(saveFileName, saveFileParserCallback, imguiState) < 0) {
-    printf("Can't load 'test.ini'\n");
-  }
-}
-
 struct AppState {
   Input input;
   ImguiState imguiState;
@@ -74,25 +31,17 @@ struct AppState {
   bool editMode;
 };
 
+void saveConfig(const AppState& appState);
+void loadConfig(AppState* appState, WindowManager& windowManager);
+
 void update(AppState& state, WindowManager& windowManager);
 
 int main(int argc, char* argv[]) {
   AppState state = {};
 
-  state.camera = {};
-  state.camera.pos = {0.f, -50.f, 20.f};
-  state.camera.setForward({0.f, 1.f, 0.f});
-
-  state.imguiState.show.quickDebug = false;
-  state.imguiState.show.fps = true;
-  state.imguiState.show.generalDebugText = false;
-  state.imguiState.show.mainMenu = true;
-
-  loadConfig(&state.imguiState);
-
-  state.editMode = true; // NOTE: We assume edit mode is enabled by default
-
   WindowManager& windowManager = WindowManager::getInstance(DEFAULT_WINDOW_WIDTH, DEFAULT_WINDOW_HEIGHT, false);
+
+  loadConfig(&state, windowManager);
 
   VulkanEngine vkEngine;
   vkEngine.init();
@@ -104,7 +53,7 @@ int main(int argc, char* argv[]) {
   }
 
   vkEngine.cleanup();
-  saveConfig(state.imguiState);
+  saveConfig(state);
 
   return 0;
 }
@@ -203,4 +152,99 @@ void update (AppState& state, WindowManager& windowManager) {
     }ImGui::End();
   }
   StartTimer(frameTimer); // for current frame
+}
+
+const char* saveFileName = "vkstudy.ini";
+
+const char* saveImguiStateHeader = "ImguiState";
+const char* saveImguiShowBools = "ShowBools";
+
+const char* saveAppStateHeader = "AppState";
+const char* saveAppEditMode = "EditMode";
+
+void writeIniSectionHeader(FILE* file, const char* headerName) {
+  fputc('[', file);
+  fputs(headerName, file);
+  fputs("]\n", file);
+}
+
+void writeIniSectionDivider(FILE* file) {
+  fputc('\n', file);
+}
+
+void writeIniValue(FILE* file, const char* valueName, const char* value) {
+  fputs(valueName, file);
+  fputc('=', file);
+  fputs(value, file);
+  fputs("\n", file);
+}
+
+void writeIniValue(FILE* file, const char* valueName, char value) {
+  fputs(valueName, file);
+  fputc('=', file);
+  fputc(value, file);
+  fputs("\n", file);
+}
+
+void saveConfig(const AppState& appState) {
+  FILE* saveFile = fopen(saveFileName, "w");
+
+  // Imgui state values
+  writeIniSectionHeader(saveFile, saveImguiStateHeader);
+
+  // show bools
+  char showBoolsIniValue[ArrayCount(ImguiState::showWindows) + 1];
+  showBoolsIniValue[ArrayCount(ImguiState::showWindows)] = '\0'; // null terminate cstring
+  for(int i = 0; i < ArrayCount(ImguiState::showWindows); ++i) {
+    bool showBool = appState.imguiState.showWindows[i];
+    showBoolsIniValue[i] = showBool ? '1' : '0';
+  }
+  writeIniValue(saveFile, saveImguiShowBools, showBoolsIniValue);
+
+  // App state values
+  writeIniSectionHeader(saveFile, saveAppStateHeader);
+  writeIniValue(saveFile, saveAppEditMode, appState.editMode ? '1' : '0');
+
+  fclose(saveFile);
+}
+
+static int saveFileParserCallback(void* userData, const char* section, const char* name, const char* value) {
+  AppState* appState = (AppState*)userData;
+
+#define MATCH(s, n) strcmp(section, s) == 0 && strcmp(name, n) == 0
+  if (MATCH(saveImguiStateHeader, saveImguiShowBools)) {
+    u32 iter = 0;
+    while(iter < ArrayCount(ImguiState::showWindows) && value[iter] != '\0') {
+      appState->imguiState.showWindows[iter++] = value[iter] != '0';
+    }
+  } if(MATCH(saveAppStateHeader, saveAppEditMode)) {
+    appState->editMode = value[0] != '0';
+  } else {
+    printf("Save file error found with unknown {section, value} of {%s,%s}", section, name);
+    return 0;  /* unknown section/name, error */
+  }
+#undef MATCH
+  return 1;
+}
+
+void loadConfig(AppState* appState, WindowManager& windowManager) {
+
+  // == default state values ==
+  appState->camera = {};
+  appState->camera.pos = {0.f, -50.f, 20.f};
+  appState->camera.setForward({0.f, 1.f, 0.f});
+
+  appState->imguiState.show.quickDebug = false;
+  appState->imguiState.show.fps = true;
+  appState->imguiState.show.generalDebugText = false;
+  appState->imguiState.show.mainMenu = true;
+
+  appState->editMode = true;
+
+  if (ini_parse(saveFileName, saveFileParserCallback, appState) < 0) {
+    printf("Can't load 'test.ini'\n");
+  }
+
+  windowManager.setMouseMode(appState->editMode);
+  windowManager.setSwitch1(appState->editMode); // edit mode and switch1 are in sync throughout the program
 }
