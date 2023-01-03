@@ -18,8 +18,12 @@ Project for studying Vulkan and a general rendering engine playground for myself
     of the custom assets, implements saving/compressing and loading/decompressing. This library is the communication line
     between `asset_baker` and `vk_study`.
     - `noop_math`: Custom math library originating from [NoopScenes](https://github.com/Lucodivo/NoopScenes) project
-  - `sdl2_DIR` environment variable in third_party/CMakeLists.txt must be set to the SDL2 library path 
-    - Ex: "C:/developer/dependencies/libs/SDL2-2.0.18"
+  - `sdl2_DIR` environment variable in third_party/CMakeLists.txt must be set to the SDL2 library path. This is the path
+  that is the parent directory to both the include and lib directories.
+    - Hardcoding the path in the CMakeLists.txt file is an acceptable option. However, the variable is also cached in the 
+    Cmake build directory, in a file titled 'CMakeCache.txt' and can be manually edited there with no changes to the 
+    project. CMake GUI should also present one with the option of adjusting cache variables.
+    - Example of SDL path: "C:/developer/dependencies/libs/SDL2-2.0.18"
 
 ### Running (⚠IN PROGRESS⚠)
 - Ensure that the working directory when running `vk_study` or `vk_baker` is the root directory of the project.
