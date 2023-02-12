@@ -13,6 +13,7 @@ Project for studying Vulkan and a general rendering engine playground for myself
   executable also partitions the information about external file formats away from the rest of the project. Removing 
   dependencies from `vk_study`.
     - External formats include: .jpg, .png, .tga, .gltf, .glb, .obj
+  - `build_shaders` is a simple configuration for validating GLSL shaders and converting them to SPIR-V.
   - Some source files are compiled separately as static libraries:
     - `assetlib`: This library contains the definitions of the custom asset file formats. It defines how the structure
     of the custom assets, implements saving/compressing and loading/decompressing. This library is the communication line
@@ -31,7 +32,14 @@ Project for studying Vulkan and a general rendering engine playground for myself
   - Argument 1: Directory of the assets
   - Argument 2: Directory of include file metadata output
   - Ex: `asset_baker.exe assets/ assets_metadata/`
-- `SDL2.dll` must be placed in same directory as `vk_study.exe`.
+- `SDL2.dll` must be accessible to Windows when running as `vk_study.exe`.
+  - This can be accomplished by ensuring that a directory containing `SDL2.dll` is appended to the PATH environment variables. 
+    - Note: If an environment variable is edited, whatever process being used to build this project (ex: CLion) must be restarted to access the updated environment variables.
+  - You have the option of placing `SDL2.dll` in the same directory as the `vk_study.exe`
+    - In my experience, this can lead to annoyances when cleaning your project and rebuilding everything from scratch.
+  - Errors you might see if `SDL2.dll` cannot be found:
+    - "The code execution cannot proceed because SDL2.dll was not found. Reinstalling the program may fix this problem."
+    - "Process finished with exit code -1073741515 (0xC0000135)"
 
 ### Example Render
 

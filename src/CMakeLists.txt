@@ -5,4 +5,4 @@ set(LIBS vkbootstrap vma imgui spirv_reflect assetlib json lz4 noop_math Vulkan:
 target_link_libraries(vk_study ${LIBS})
 set_property(TARGET vk_study PROPERTY VS_DEBUGGER_WORKING_DIRECTORY "$<TARGET_FILE_DIR:vk_study>")
 
-add_dependencies(vk_study Shaders)
+add_dependencies(vk_study build_shaders)

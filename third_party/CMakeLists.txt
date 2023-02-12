@@ -1,5 +1,9 @@
 find_package(Vulkan REQUIRED)
 
+if(MSVC)
+    add_definitions(-D_CRT_SECURE_NO_WARNINGS) # Remove errors similar to the following "ERROR: printf should be "printf_s"
+endif()
+
 # VulkanMemoryAllocator
 add_library(vma INTERFACE)
 target_include_directories(vma INTERFACE vma) # vma is a header only libs so we only need the include path
