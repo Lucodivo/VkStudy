@@ -3,6 +3,14 @@
 #define DEFAULT_WINDOW_WIDTH 1920
 #define DEFAULT_WINDOW_HEIGHT 1080
 
+
+
+const char* saveFileName = "vkstudy.ini";
+const char* saveImguiStateHeader = "ImguiState";
+const char* saveImguiShowBools = "ShowBools";
+const char* saveAppStateHeader = "AppState";
+const char* saveAppEditMode = "EditMode";
+
 struct ImguiState {
   union {
     bool showWindows[4];
@@ -153,14 +161,6 @@ void update (AppState& state, WindowManager& windowManager) {
   }
   StartTimer(frameTimer); // for current frame
 }
-
-const char* saveFileName = "vkstudy.ini";
-
-const char* saveImguiStateHeader = "ImguiState";
-const char* saveImguiShowBools = "ShowBools";
-
-const char* saveAppStateHeader = "AppState";
-const char* saveAppEditMode = "EditMode";
 
 void writeIniSectionHeader(FILE* file, const char* headerName) {
   fputc('[', file);
