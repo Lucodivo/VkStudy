@@ -67,7 +67,7 @@ void update (AppState& state, WindowManager& windowManager) {
   state.input = windowManager.processInput();
 
   while(state.input.windowMinimized) {
-    windowManager.waitForRestore();
+    windowManager.waitForRestore(); // pause whole application until window is restored
     state.input = windowManager.processInput();
   }
 
@@ -217,7 +217,7 @@ static int saveFileParserCallback(void* userData, const char* section, const cha
     while(iter < ArrayCount(ImguiState::showWindows) && value[iter] != '\0') {
       appState->imguiState.showWindows[iter++] = value[iter] != '0';
     }
-  } if(MATCH(saveAppStateHeader, saveAppEditMode)) {
+  } else if(MATCH(saveAppStateHeader, saveAppEditMode)) {
     appState->editMode = value[0] != '0';
   } else {
     printf("Save file error found with unknown {section, value} of {%s,%s}", section, name);

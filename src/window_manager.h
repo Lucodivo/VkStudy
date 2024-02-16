@@ -1,5 +1,6 @@
 #pragma once
 
+// TODO: consider optimizing bools with flags if passing around Input structs too much?
 struct Input {
   bool up, down, forward, back, left, right;
   bool button1, button2, button3;
