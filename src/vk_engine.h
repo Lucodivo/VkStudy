@@ -2,9 +2,6 @@
 
 const u32 FRAME_OVERLAP = 2;
 
-#define DEFAULT_WINDOW_WIDTH 1920
-#define DEFAULT_WINDOW_HEIGHT 1080
-
 struct Material {
   VkPipeline pipeline;
   VkPipelineLayout pipelineLayout;
@@ -56,9 +53,7 @@ public:
   bool isInitialized{false};
   u32 frameNumber{0};
 
-  VkExtent2D windowExtent{DEFAULT_WINDOW_WIDTH, DEFAULT_WINDOW_HEIGHT};
-
-  struct SDL_Window* window{nullptr};
+  VkExtent2D windowExtent{0, 0};
 
   //initializes everything in the engine
   void init();
@@ -66,11 +61,11 @@ public:
   //shuts down the engine
   void cleanup();
 
-  //draw loop
-  void draw();
+  // update based on input
+  void initFrame(const bool showRenderDebugInfo);
 
-  //run main loop
-  void run();
+  //draw loop
+  void draw(const Camera& camera);
 
   VkInstance instance; // Vulkan library handle
   VkDebugUtilsMessengerEXT debugMessenger; // Vulkan debug output handle
@@ -108,14 +103,16 @@ public:
   std::unordered_map<std::string, Mesh> meshes;
   std::unordered_map<std::string, Texture> loadedTextures;
 
+  VkSampler blockySampler;
+  VkSampler linearSampler;
+
   VkPipeline fragmentShaderPipeline;
   VkPipelineLayout fragmentShaderPipelineLayout;
-
-  Camera camera;
 
   VkDescriptorSetLayout globalDescSetLayout;
   VkDescriptorSetLayout objectDescSetLayout;
   VkDescriptorSetLayout singleTextureSetLayout;
+  VkDescriptorSetAllocateInfo singleTexDescSetAllocInfo;
   VkDescriptorPool descriptorPool;
 
   VkDescriptorSet globalDescriptorSet;
@@ -126,14 +123,6 @@ public:
     u32 cameraOffset;
   } globalBuffer;
 
-  struct {
-    bool up, down, forward, back, left, right;
-    bool button1, button2, button3;
-    bool switch1;
-    bool quit, fullscreen;
-    f32 mouseDeltaX, mouseDeltaY;
-  } input = {};
-
   MaterialCreateInfo materialInfos[3] = {
           materialDefaultLit,
           materialDefaulColor,
@@ -142,37 +131,23 @@ public:
 
   UploadContext uploadContext;
 
-  struct {
-    bool showGeneralDebugText;
-    bool showQuickDebug;
-    bool showMainMenu;
-    bool showFPS;
-    CStringRingBuffer stringRingBuffer;
-  } imguiState;
-
 private:
 
-  void initSDL();
-
-  void initImgui();
-
+  // == initializations ==
   void initVulkan();
   void initSwapchain();
   void initCommands();
   void initDefaultRenderpass();
   void initFramebuffers();
   void initSyncStructures();
+  void initSamplers();
   void initDescriptors();
   void createPipeline(MaterialCreateInfo matInfo);
   void initPipelines();
   void createFragmentShaderPipeline();
 
-  void processInput();
-
-  void update();
-
   void initScene();
-  void initCamera();
+  void attachSingleLoadedTexToNewDescSet(VkSampler sampler, const char* loadedTex, VkDescriptorSet* outDescSet);
 
   void cleanupSwapChain();
   void recreateSwapChain();
@@ -185,15 +160,11 @@ private:
   Material* getMaterial(const char* name); //returns nullptr if it can't be found
 
   void drawFragmentShader(VkCommandBuffer cmd);
-  void drawObjects(VkCommandBuffer cmd, RenderObject* first, u32 count);
-
-  void startImguiFrame();
-  void renderImgui(VkCommandBuffer cmd);
+  void drawObjects(VkCommandBuffer cmd, const Camera& camera, RenderObject* first, u32 count);
 
   FrameData& getCurrentFrame();
 
-  // ImGui functions for no thought debug window options
-  // Not for anything but messily pushing info or adjusting values
-  void quickDebugFloat(const char* label, float* v, float v_min, float v_max, const char* format = "%.3f", ImGuiSliderFlags flags = 0) const;
-  void quickDebugText(const char* fmt, ...) const;
+  void initImgui();
+  VkImguiInstance imguiInstance;
+  bool renderDebugInfoRequestedForFrame = false; // NOTE: Do NOT modify this value outside of initFrame()
 };

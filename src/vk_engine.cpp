@@ -16,12 +16,8 @@ const VkClearValue depthClearValue{
 };
 
 void VulkanEngine::init() {
-  // needed for SDL to counteract the scaling Windows can do for windows
-  SetProcessDPIAware();
 
-  initSDL();
-
-  initCamera();
+  WindowManager::getInstance().getExtent(&windowExtent.width, &windowExtent.height);
 
   initVulkan();
   initSwapchain();
@@ -29,13 +25,14 @@ void VulkanEngine::init() {
   initDefaultRenderpass();
   initFramebuffers();
   initSyncStructures();
+  initSamplers();
   initDescriptors();
   initPipelines();
   loadImages();
   loadMeshes();
   initScene();
 
-  initImgui();
+  initImgui(); // move out?
 
   isInitialized = true;
 }
@@ -44,6 +41,7 @@ void VulkanEngine::cleanup() {
   VK_CHECK(vkDeviceWaitIdle(device));
 
   if(isInitialized) {
+    vkImguiDeinit(imguiInstance);
     cleanupSwapChain();
     mainDeletionQueue.flush();
 
@@ -61,11 +59,10 @@ void VulkanEngine::cleanup() {
     vkDestroySurfaceKHR(instance, surface, nullptr);
     vkb::destroy_debug_utils_messenger(instance, debugMessenger);
     vkDestroyInstance(instance, nullptr);
-    SDL_DestroyWindow(window);
   }
 }
 
-void VulkanEngine::draw() {
+void VulkanEngine::draw(const Camera& camera) {
   FrameData& frame = getCurrentFrame();
   VK_CHECK(vkWaitForFences(device, 1, &frame.renderFence, true, DEFAULT_NANOSEC_TIMEOUT));
   VK_CHECK(vkResetFences(device, 1, &frame.renderFence));
@@ -97,8 +94,8 @@ void VulkanEngine::draw() {
     vkCmdBeginRenderPass(cmd, &rpInfo, VK_SUBPASS_CONTENTS_INLINE);
 
     drawFragmentShader(cmd);
-    drawObjects(cmd, renderables.data(), (u32)renderables.size());
-    renderImgui(cmd);
+    drawObjects(cmd, camera,renderables.data(), (u32)renderables.size());
+    vkImguiRender(cmd);
 
     // finishes render and transitions image to layout specified in renderpass
     vkCmdEndRenderPass(cmd);
@@ -143,285 +140,13 @@ void VulkanEngine::draw() {
   frameNumber++;
 }
 
-void VulkanEngine::processInput() {
-  local_access bool altDown = false;
-  bool altWasDown = altDown;
-
-  SDL_Event e;
-  while (SDL_PollEvent(&e) != 0)
-  {
-    switch (e.type) {
-    case SDL_QUIT: input.quit = true; break;
-    case SDL_KEYDOWN:
-      switch (e.key.keysym.sym)
-      {
-        case SDLK_ESCAPE: input.quit = true; break;
-        case SDLK_SPACE: break;
-        case SDLK_LSHIFT: input.button1 = true; break;
-        case SDLK_a: case SDLK_LEFT: input.left = true; break;
-        case SDLK_d: case SDLK_RIGHT: input.right = true; break;
-        case SDLK_w: case SDLK_UP: input.forward = true; break;
-        case SDLK_s: case SDLK_DOWN: input.back = true; break;
-        case SDLK_q: input.down = true; break;
-        case SDLK_e: input.up = true; break;
-        case SDLK_LALT: case SDLK_RALT: altDown = true; break;
-      }
-      break;
-    case SDL_KEYUP:
-      switch (e.key.keysym.sym)
-      {
-        case SDLK_SPACE: input.switch1 = !input.switch1; break;
-        case SDLK_a: case SDLK_LEFT: input.left = false; break;
-        case SDLK_d: case SDLK_RIGHT: input.right = false; break;
-        case SDLK_w: case SDLK_UP: input.forward = false; break;
-        case SDLK_s: case SDLK_DOWN: input.back = false; break;
-        case SDLK_q: input.down = false; break;
-        case SDLK_e: input.up = false;break;
-        case SDLK_LALT: case SDLK_RALT: altDown = false; break;
-        case SDLK_RETURN: if (altWasDown) { input.fullscreen = !input.fullscreen; } break;
-        case SDLK_TAB: imguiState.showMainMenu = !imguiState.showMainMenu; break;
-      }
-      break;
-    case SDL_MOUSEMOTION:
-    {
-      input.mouseDeltaX += (f32)e.motion.xrel / windowExtent.width;
-      input.mouseDeltaY += (f32)e.motion.yrel / windowExtent.height;
-      break;
-    }
-    default: break;
-    }
-
-    // also send input to ImGui
-    ImGui_ImplSDL2_ProcessEvent(&e);
-  }
-}
-
-void VulkanEngine::quickDebugText(const char* fmt, ...) const {
-  if(imguiState.showQuickDebug) {
-    va_list args;
-    va_start(args, fmt);
-    ImGui::TextV(fmt, args);
-    va_end(args);
-  }
-}
-
-void VulkanEngine::quickDebugFloat(const char* label, float* v, float v_min, float v_max, const char* format, ImGuiSliderFlags flags) const {
-  if(imguiState.showQuickDebug) {
-    ImGui::SliderFloat(label, v, v_min, v_max, format, flags);
-  }
-}
-
-void VulkanEngine::update() {
-  local_access f32 moveSpeed = 0.5f;
-  local_access f32 turnSpeed = 0.5f;
-  local_access bool editMode = true; // NOTE: We assume edit mode is enabled by default
-  local_access bool fullscreened = false; // NOTE: We assume windowed by default
-  vec3 cameraDelta = {};
-  f32 yawDelta = 0.0f;
-  f32 pitchDelta = 0.0f;
-
-  if(fullscreened != input.fullscreen) {
-    fullscreened = !fullscreened;
-
-    if(fullscreened) {
-      SDL_SetWindowFullscreen(window, SDL_WINDOW_FULLSCREEN_DESKTOP);
-      SDL_GLContext sdlContext = SDL_GL_CreateContext(window);
-      SDL_GL_MakeCurrent(window, sdlContext);
-    } else {
-      SDL_SetWindowFullscreen(window, 0);
-      SDL_GLContext sdlContext = SDL_GL_CreateContext(window);
-      SDL_GL_MakeCurrent(window, sdlContext);
-    }
-  }
-
-  if(editMode != input.switch1) {
-    editMode = input.switch1;
-    SDL_SetRelativeMouseMode(editMode ? SDL_FALSE : SDL_TRUE);
-  }
-
-  // Used to keep camera at constant speed regardless of direction
-  const vec4 invSqrt = {
-          0.0f,
-          1.0f,
-          0.7071067f,
-          0.5773502f
-  };
-  u32 invSqrtIndex = 0;
-
-  if(input.left ^ input.right) {
-    invSqrtIndex++;
-    if(input.left) {
-      cameraDelta.x = -1.0f;
-    } else {
-      cameraDelta.x = 1.0f;
-    }
-  }
-
-  if(input.back ^ input.forward) {
-    invSqrtIndex++;
-    if(input.back) {
-      cameraDelta.y = -1.0f;
-    } else {
-      cameraDelta.y = 1.0f;
-    }
-  }
-
-  if(input.down ^ input.up) {
-    invSqrtIndex++;
-    if(input.down) {
-      cameraDelta.z = -1.0f;
-    } else {
-      cameraDelta.z = 1.0f;
-    }
-  }
-
-  if(!editMode && (input.mouseDeltaX != 0.0f || input.mouseDeltaY != 0.0f)) {
-    f32 turnSpd = turnSpeed * 10.0f;
-    camera.turn(input.mouseDeltaX * turnSpd, input.mouseDeltaY * turnSpd);
-  }
-
-  // reset some input variables
-  {
-    input.mouseDeltaX = 0.0f;
-    input.mouseDeltaY = 0.0f;
-  }
-
-  quickDebugFloat("move speed", &moveSpeed, 0.1f, 1.0f, "%.2f");
-
-  camera.move(cameraDelta * (invSqrt.val[invSqrtIndex] * moveSpeed));
+void VulkanEngine::initFrame(const bool showRenderDebugInfo) {
+  renderDebugInfoRequestedForFrame = showRenderDebugInfo;
+  vkImguiStartFrame();
 }
 
 FrameData& VulkanEngine::getCurrentFrame() {
   return frames[frameNumber % FRAME_OVERLAP];
-}
-
-void VulkanEngine::run() {
-  while(!input.quit) {
-    processInput();
-    startImguiFrame();
-    update();
-    draw();
-  }
-}
-
-void VulkanEngine::initSDL() {
-  SDL_Init(SDL_INIT_VIDEO);
-  SDL_WindowFlags window_flags = (SDL_WindowFlags)(SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI);
-  window = SDL_CreateWindow(
-          "Vulkan Engine",
-          SDL_WINDOWPOS_UNDEFINED,
-          SDL_WINDOWPOS_UNDEFINED,
-          windowExtent.width,
-          windowExtent.height,
-          window_flags
-  );
-  SDL_CaptureMouse(SDL_TRUE);
-  SDL_SetHintWithPriority(SDL_HINT_MOUSE_RELATIVE_MODE_WARP, "1", SDL_HINT_OVERRIDE);
-}
-
-void VulkanEngine::initImgui() {
-  IMGUI_CHECKVERSION();
-  ImGui::CreateContext();
-  ImGuiIO& io = ImGui::GetIO();
-  (void)io;
-  //io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;     // Enable Keyboard Controls
-  //io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;      // Enable Gamepad Controls
-
-  io.FontGlobalScale = 2.0f;
-
-  // Setup Dear ImGui style
-  ImGui::StyleColorsDark();
-  //ImGui::StyleColorsClassic();
-
-  ImGui_ImplVulkanH_Window imguiWindow{};
-  imguiWindow.Width = windowExtent.width;
-  imguiWindow.Height = windowExtent.height;
-  imguiWindow.Swapchain = swapchain;
-  imguiWindow.Surface = surface;
-  imguiWindow.SurfaceFormat.format = swapchainImageFormat;
-  imguiWindow.SurfaceFormat.colorSpace = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR;
-  imguiWindow.PresentMode = PRESENT_MODE;
-  imguiWindow.RenderPass = renderPass;
-  imguiWindow.ClearEnable = true;
-  imguiWindow.ClearValue = colorClearValue;
-  imguiWindow.FrameIndex = 0;
-  imguiWindow.ImageCount = (u32)swapchainImageViews.size();
-  imguiWindow.SemaphoreIndex = 0;
-  imguiWindow.Frames = nullptr;
-  imguiWindow.FrameSemaphores = nullptr;
-
-  // Create Descriptor Pool
-  VkDescriptorPool imguiDescriptorPool;
-  {
-    VkDescriptorPoolSize poolSizes[] =
-            {
-                    {VK_DESCRIPTOR_TYPE_SAMPLER,                1000},
-                    {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1000},
-                    {VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,          1000},
-                    {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,          1000},
-                    {VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER,   1000},
-                    {VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER,   1000},
-                    {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,         1000},
-                    {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,         1000},
-                    {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, 1000},
-                    {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC, 1000},
-                    {VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT,       1000}
-            };
-    VkDescriptorPoolCreateInfo poolInfo = {};
-    poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-    poolInfo.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
-    poolInfo.maxSets = 1000 * IM_ARRAYSIZE(poolSizes);
-    poolInfo.poolSizeCount = (uint32_t)IM_ARRAYSIZE(poolSizes);
-    poolInfo.pPoolSizes = poolSizes;
-    VK_CHECK(vkCreateDescriptorPool(device, &poolInfo, nullptr, &imguiDescriptorPool));
-  }
-
-  ImGui_ImplSDL2_InitForVulkan(window);
-  ImGui_ImplVulkan_InitInfo initInfo = {};
-  initInfo.Instance = instance;
-  initInfo.PhysicalDevice = chosenGPU;
-  initInfo.Device = device;
-  initInfo.QueueFamily = graphicsQueueFamily;
-  initInfo.Queue = graphicsQueue;
-  initInfo.PipelineCache = VK_NULL_HANDLE;
-  initInfo.DescriptorPool = imguiDescriptorPool;
-  initInfo.MinImageCount = 3;
-  initInfo.ImageCount = (u32)swapchainImageViews.size();
-  initInfo.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
-  ImGui_ImplVulkan_Init(&initInfo, imguiWindow.RenderPass);
-
-  // Upload Fonts
-  {
-    // Use any command queue
-    VK_CHECK(vkResetCommandPool(device, frames[0].commandPool, 0));
-    VkCommandBufferBeginInfo beginInfo = {};
-    beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-    beginInfo.flags |= VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-    VK_CHECK(vkBeginCommandBuffer(frames[0].mainCommandBuffer, &beginInfo));
-
-    ImGui_ImplVulkan_CreateFontsTexture(frames[0].mainCommandBuffer);
-
-    VkSubmitInfo endInfo = {};
-    endInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-    endInfo.commandBufferCount = 1;
-    endInfo.pCommandBuffers = &frames[0].mainCommandBuffer;
-    VK_CHECK(vkEndCommandBuffer(frames[0].mainCommandBuffer));
-    VK_CHECK(vkQueueSubmit(graphicsQueue, 1, &endInfo, VK_NULL_HANDLE));
-
-    VK_CHECK(vkDeviceWaitIdle(device));
-    ImGui_ImplVulkan_DestroyFontUploadObjects();
-  }
-
-  imguiState = {};
-  imguiState.showMainMenu = true;
-  imguiState.showFPS = true;
-  imguiState.stringRingBuffer = createCStringRingBuffer(50, 256);
-
-  mainDeletionQueue.pushFunction([=]() {
-    vkDestroyDescriptorPool(device, imguiDescriptorPool, nullptr);
-    ImGui_ImplVulkan_Shutdown();
-    deleteCStringRingBuffer(imguiState.stringRingBuffer);
-  });
 }
 
 void VulkanEngine::initVulkan() {
@@ -439,7 +164,7 @@ void VulkanEngine::initVulkan() {
   instance = vkbInst.instance;
   debugMessenger = vkbInst.debug_messenger;
 
-  SDL_Vulkan_CreateSurface(window, instance, &surface);
+  WindowManager::getInstance().createSurface(instance, &surface, &windowExtent.width, &windowExtent.height);
 
 //  VkPhysicalDeviceFeatures physicalDeviceFeatures{};
 //  physicalDeviceFeatures.fillModeNonSolid = VK_TRUE;
@@ -763,6 +488,13 @@ void VulkanEngine::initDescriptors() {
 
   vkCreateDescriptorSetLayout(device, &descSetCreateInfo, nullptr, &singleTextureSetLayout);
 
+  //allocate the descriptor set for single-texture to use on the material
+  singleTexDescSetAllocInfo.pNext = nullptr;
+  singleTexDescSetAllocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+  singleTexDescSetAllocInfo.descriptorPool = descriptorPool;
+  singleTexDescSetAllocInfo.descriptorSetCount = 1;
+  singleTexDescSetAllocInfo.pSetLayouts = &singleTextureSetLayout;
+
   mainDeletionQueue.pushFunction([=]() {
     // free buffers
     vmaDestroyBuffer(vmaAllocator, globalBuffer.buffer.vkBuffer, globalBuffer.buffer.vmaAllocation);
@@ -870,101 +602,90 @@ void VulkanEngine::createPipeline(MaterialCreateInfo matInfo) {
   createMaterial(pipeline, pipelineLayout, matInfo.name);
 }
 
+void VulkanEngine::initSamplers() {
+  VkSamplerCreateInfo blockySamplerCI = vkinit::samplerCreateInfo(VK_FILTER_NEAREST);
+  vkCreateSampler(device, &blockySamplerCI, nullptr, &blockySampler);
+
+  VkSamplerCreateInfo linearSamplerCI = vkinit::samplerCreateInfo(VK_FILTER_LINEAR);
+  vkCreateSampler(device, &linearSamplerCI, nullptr, &linearSampler);
+
+  mainDeletionQueue.pushFunction([=]() {
+    vkDestroySampler(device, blockySampler, nullptr);
+    vkDestroySampler(device, linearSampler, nullptr);
+  });
+}
+
+void VulkanEngine::attachSingleLoadedTexToNewDescSet(VkSampler sampler, const char* loadedTex, VkDescriptorSet* outDescSet) {
+  vkAllocateDescriptorSets(device, &singleTexDescSetAllocInfo, outDescSet);
+
+  //write to the descriptor set so that it points to our minecraft_diffuse texture
+  VkDescriptorImageInfo imageBufferInfo;
+  imageBufferInfo.sampler = blockySampler;
+  imageBufferInfo.imageView = loadedTextures[loadedTex].imageView;
+  imageBufferInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+
+  VkWriteDescriptorSet texture = vkinit::writeDescriptorImage(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, *outDescSet, &imageBufferInfo, 0);
+
+  vkUpdateDescriptorSets(device, 1, &texture, 0, nullptr);
+}
+
 void VulkanEngine::initScene() {
 
-  // Samplers //
-  VkSamplerCreateInfo samplerInfo = vkinit::samplerCreateInfo(VK_FILTER_NEAREST);
-
-  VkSampler blockySampler;
-  vkCreateSampler(device, &samplerInfo, nullptr, &blockySampler);
-
-  //allocate the descriptor set for single-texture to use on the material
-  VkDescriptorSetAllocateInfo allocInfo = {};
-  allocInfo.pNext = nullptr;
-  allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-  allocInfo.descriptorPool = descriptorPool;
-  allocInfo.descriptorSetCount = 1;
-  allocInfo.pSetLayouts = &singleTextureSetLayout;
-
-  auto attachTexture = [&](VkSampler sampler, const char* loadedTexture, VkDescriptorSet* textureSet) -> void {
-    vkAllocateDescriptorSets(device, &allocInfo, textureSet);
-
-    //write to the descriptor set so that it points to our minecraft_diffuse texture
-    VkDescriptorImageInfo imageBufferInfo;
-    imageBufferInfo.sampler = blockySampler;
-    imageBufferInfo.imageView = loadedTextures[loadedTexture].imageView;
-    imageBufferInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-
-    VkWriteDescriptorSet texture = vkinit::writeDescriptorImage(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, *textureSet, &imageBufferInfo, 0);
-
-    vkUpdateDescriptorSets(device, 1, &texture, 0, nullptr);
-  };
-
   // Renderables //
-  // Mr. Saturn
-	RenderObject mrSaturnObject;
-  mrSaturnObject.mesh = getMesh(bakedMeshAssetData.mr_saturn.name);
-  mrSaturnObject.materialName = materialDefaultLit.name;
-  mrSaturnObject.material = getMaterial(mrSaturnObject.materialName);
-	f32 mrSaturnScale = 20.0f;
-	mat4 mrSaturnScaleMat = scale_mat4(vec3{mrSaturnScale, mrSaturnScale, mrSaturnScale});
-	mat4 mrSaturnTranslationMat = translate_mat4(vec3{0.0f, 0.0f, -mrSaturnScale * 2.0f});
-	mat4 mrSaturnTransform = mrSaturnTranslationMat * mrSaturnScaleMat;
-  mrSaturnObject.modelMatrix = mrSaturnTransform;
-  mrSaturnObject.defaultColor = vec4{155.0f / 255.0f, 115.0f / 255.0f, 96.0f / 255.0f, 1.0f};
-  attachTexture(blockySampler, bakedTextureAssetData.single_white_pixel.name, &mrSaturnObject.textureSet);
-	renderables.push_back(mrSaturnObject);
-
-  // Cubes //
-	RenderObject cubeObject;
-  cubeObject.mesh = getMesh(bakedMeshAssetData.cube.name);
-  cubeObject.materialName = materialDefaulColor.name;
-  cubeObject.material = getMaterial(cubeObject.materialName);
-  attachTexture(blockySampler, bakedTextureAssetData.single_white_pixel.name, &cubeObject.textureSet);
-	f32 envScale = 0.2f;
-	mat4 envScaleMat = scale_mat4(vec3{envScale, envScale, envScale});
-	for (s32 x = -16; x <= 16; ++x)
-	for (s32 y = -16; y <= 16; ++y)
-	for (s32 z = 0; z <= 32; ++z) {
-		vec3 pos{ (f32)x, (f32)y, (f32)z };
-		vec3 color = (pos + vec3{16.0f, 16.0f, 0.0f}) / vec3{32.0f, 32.0f, 32.0f};
-		mat4 translationMat = translate_mat4(pos);
-    cubeObject.modelMatrix = translationMat * envScaleMat;
-    cubeObject.defaultColor = vec4{color.r, color.g, color.b, 1.0f}; // TODO: lookup how glm accomplishes vec4{vec3, f32} construction
-		renderables.push_back(cubeObject);
-	}
+//  // Mr. Saturn
+//	RenderObject mrSaturnObject;
+//  mrSaturnObject.mesh = getMesh(bakedMeshAssetData.mr_saturn.name);
+//  mrSaturnObject.materialName = materialDefaultLit.name;
+//  mrSaturnObject.material = getMaterial(mrSaturnObject.materialName);
+//	f32 mrSaturnScale = 20.0f;
+//	mat4 mrSaturnScaleMat = scale_mat4(vec3{mrSaturnScale, mrSaturnScale, mrSaturnScale});
+//	mat4 mrSaturnTranslationMat = translate_mat4(vec3{0.0f, 0.0f, -mrSaturnScale * 2.0f});
+//	mat4 mrSaturnTransform = mrSaturnTranslationMat * mrSaturnScaleMat;
+//  mrSaturnObject.modelMatrix = mrSaturnTransform;
+//  mrSaturnObject.defaultColor = vec4{155.0f / 255.0f, 115.0f / 255.0f, 96.0f / 255.0f, 1.0f};
+//  attachTexture(blockySampler, bakedTextureAssetData.single_white_pixel.name, &mrSaturnObject.textureSet);
+//	renderables.push_back(mrSaturnObject);
+//
+//  // Cubes //
+//	RenderObject cubeObject;
+//  cubeObject.mesh = getMesh(bakedMeshAssetData.cube.name);
+//  cubeObject.materialName = materialDefaulColor.name;
+//  cubeObject.material = getMaterial(cubeObject.materialName);
+//  attachTexture(blockySampler, bakedTextureAssetData.single_white_pixel.name, &cubeObject.textureSet);
+//	f32 envScale = 0.2f;
+//	mat4 envScaleMat = scale_mat4(vec3{envScale, envScale, envScale});
+//	for (s32 x = -16; x <= 16; ++x)
+//	for (s32 y = -16; y <= 16; ++y)
+//	for (s32 z = 0; z <= 32; ++z) {
+//		vec3 pos{ (f32)x, (f32)y, (f32)z };
+//		vec3 color = (pos + vec3{16.0f, 16.0f, 0.0f}) / vec3{32.0f, 32.0f, 32.0f};
+//		mat4 translationMat = translate_mat4(pos);
+//    cubeObject.modelMatrix = translationMat * envScaleMat;
+//    cubeObject.defaultColor = vec4{color.r, color.g, color.b, 1.0f}; // TODO: lookup how glm accomplishes vec4{vec3, f32} construction
+//		renderables.push_back(cubeObject);
+//	}
 
   // Minecraft World
-//  RenderObject minecraftObject;
-//  minecraftObject.mesh = getMesh(bakedMeshAssetData.lost_empire.name);
-//  minecraftObject.materialName = materialTextured.name;
-//  minecraftObject.material = getMaterial(minecraftObject.materialName);
-//  minecraftObject.defaultColor = vec4{50.0f, 0.0f, 0.0f, 1.0f};
-//  attachTexture(blockySampler, bakedTextureAssetData.lost_empire_RGBA.name, &minecraftObject.textureSet);
-//
-//  f32 minecraftScale = 1.0f;
-//  mat4 minecraftScaleMat = scale_mat4(vec3{minecraftScale, minecraftScale, minecraftScale});
-//  mat4 minecraftRotationMat = rotate_mat4(RadiansPerDegree * 90.0f, vec3{1.0f, 0.0f, 0.0f});
-//  mat4 minecraftTranslationMat = translate_mat4(vec3{0.0f, 0.0f, 0.0f});
-//  mat4 minecraftTransform = minecraftTranslationMat * minecraftRotationMat * minecraftScaleMat;
-//  minecraftObject.modelMatrix = minecraftTransform;
-//
-//  renderables.push_back(minecraftObject);
+  RenderObject minecraftObject;
+  minecraftObject.mesh = getMesh(bakedMeshAssetData.lost_empire.name);
+  minecraftObject.materialName = materialTextured.name;
+  minecraftObject.material = getMaterial(minecraftObject.materialName);
+  minecraftObject.defaultColor = vec4{50.0f, 0.0f, 0.0f, 1.0f};
+  attachSingleLoadedTexToNewDescSet(blockySampler, bakedTextureAssetData.lost_empire_RGBA.name, &minecraftObject.textureSet);
+
+  f32 minecraftScale = 1.0f;
+  mat4 minecraftScaleMat = scale_mat4(vec3{minecraftScale, minecraftScale, minecraftScale});
+  mat4 minecraftRotationMat = rotate_mat4(RadiansPerDegree * 90.0f, vec3{1.0f, 0.0f, 0.0f});
+  mat4 minecraftTranslationMat = translate_mat4(vec3{0.0f, 0.0f, 0.0f});
+  mat4 minecraftTransform = minecraftTranslationMat * minecraftRotationMat * minecraftScaleMat;
+  minecraftObject.modelMatrix = minecraftTransform;
+
+  renderables.push_back(minecraftObject);
 
   // TODO: sort objects by material to minimize binding pipelines
   //std::sort(renderables.begin(), renderables.end(), [](const RenderObject& a, const RenderObject& b) {
   //	return a.material->pipeline > b.material->pipeline;
   //});
-
-  mainDeletionQueue.pushFunction([=]() {
-    vkDestroySampler(device, blockySampler, nullptr);
-  });
-}
-
-void VulkanEngine::initCamera() {
-  camera = {};
-  camera.pos = {0.f, -50.f, 20.f};
-  camera.setForward({0.f, 1.f, 0.f});
 }
 
 void VulkanEngine::loadMeshes() {
@@ -1023,15 +744,7 @@ void VulkanEngine::cleanupSwapChain() {
 }
 
 void VulkanEngine::recreateSwapChain() {
-  s32 w, h;
-  SDL_GetWindowSize(window, &w, &h);
-  while(w == 0 || h == 0) {
-    // TODO: Does this actually work?
-    SDL_WaitEvent(NULL);
-    SDL_GetWindowSize(window, &w, &h);
-  }
-  windowExtent.width = w;
-  windowExtent.height = h;
+  WindowManager::getInstance().getExtent(&windowExtent.width, &windowExtent.height);
 
   vkDeviceWaitIdle(device);
 
@@ -1097,7 +810,7 @@ void VulkanEngine::drawFragmentShader(VkCommandBuffer cmd) {
   vkCmdDraw(cmd, 6, 1, 0, 0);
 }
 
-void VulkanEngine::drawObjects(VkCommandBuffer cmd, RenderObject* firstObject, u32 objectCount) {
+void VulkanEngine::drawObjects(VkCommandBuffer cmd, const Camera& camera, RenderObject* firstObject, u32 objectCount) {
   FrameData& frame = getCurrentFrame();
 
   // camera data
@@ -1145,7 +858,7 @@ void VulkanEngine::drawObjects(VkCommandBuffer cmd, RenderObject* firstObject, u
   objectData = nullptr;
   vmaUnmapMemory(vmaAllocator, frame.objectBuffer.vmaAllocation);
   f64 ssboUploadTimeMs = StopTimer(ssboUploadTimer);
-  quickDebugText("Uploading SSBO data: %5.5f ms", ssboUploadTimeMs);
+  vkImguiQuickDebugText(renderDebugInfoRequestedForFrame, "Uploading SSBO data: %5.5f ms", ssboUploadTimeMs);
 
   VkViewport viewport{};
   viewport.x = 0;
@@ -1224,46 +937,7 @@ void VulkanEngine::drawObjects(VkCommandBuffer cmd, RenderObject* firstObject, u
   }
 
   f64 objectCmdBufferFillMs = StopTimer(objectCmdBufferFillTimer);
-  quickDebugText("Filling command buffer for object draws: %5.5f ms", objectCmdBufferFillMs);
-}
-
-void VulkanEngine::startImguiFrame() {
-  ImGui_ImplVulkan_NewFrame();
-  ImGui_ImplSDL2_NewFrame(window);
-  ImGui::NewFrame();
-
-  if(imguiState.showMainMenu) {
-    if(ImGui::BeginMainMenuBar()) {
-      if(ImGui::BeginMenu("Windows")) {
-        ImGui::MenuItem("Quick Debug Log", NULL, &imguiState.showQuickDebug);
-        ImGui::MenuItem("General Debug Text", NULL, &imguiState.showGeneralDebugText);
-        ImGui::MenuItem("Main Debug Menu", NULL, &imguiState.showMainMenu);
-        ImGui::MenuItem("FPS", NULL, &imguiState.showFPS);
-        ImGui::EndMenu();
-      }ImGui::EndMainMenuBar();
-    }
-  }
-
-  imguiTextWindow("General Debug", imguiState.stringRingBuffer, imguiState.showGeneralDebugText);
-
-  local_access Timer frameTimer;
-  f64 frameTimeMs = StopTimer(frameTimer); // for last frame
-  f64 frameFPS = 1000.0 / frameTimeMs;
-  if(imguiState.showFPS) {
-    const ImGuiWindowFlags textNoFrills = ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoResize;
-    if(ImGui::Begin("FPS", &imguiState.showFPS, textNoFrills)) {
-      ImGui::Text("%5.2f ms | %3.1f fps", frameTimeMs, frameFPS);
-    }ImGui::End();
-  }
-  StartTimer(frameTimer); // for current frame
-}
-
-void VulkanEngine::renderImgui(VkCommandBuffer cmd) {
-  // Rendering
-  ImGui::Render();
-
-  // Record dear imgui primitives into command buffer
-  ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), cmd);
+  vkImguiQuickDebugText(renderDebugInfoRequestedForFrame, "Filling command buffer for object draws: %5.5f ms", objectCmdBufferFillMs);
 }
 
 void VulkanEngine::loadImages() {
@@ -1301,4 +975,18 @@ void VulkanEngine::loadImages() {
       loadedTextures.erase(bakedTextureData.name);
     }
   });
+}
+
+void VulkanEngine::initImgui() {
+  VkImguiCreateInfo imguiCI;
+  imguiCI.instance = instance;
+  imguiCI.device = device;
+  imguiCI.chosenGPU = chosenGPU;
+  imguiCI.fontTextUploadCommandBuffer = frames[0].mainCommandBuffer;
+  imguiCI.graphicsQueue = graphicsQueue;
+  imguiCI.graphicsQueueFamily = graphicsQueueFamily;
+  imguiCI.renderPass = renderPass;
+  imguiCI.swapChainImageCount = (u32)swapchainImageViews.size();
+
+  vkImguiCreateInstance(&imguiCI, &imguiInstance);
 }

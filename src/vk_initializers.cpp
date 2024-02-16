@@ -258,13 +258,13 @@ VkWriteDescriptorSet vkinit::writeDescriptorImage(VkDescriptorType type, VkDescr
   return write;
 }
 
-VkSamplerCreateInfo vkinit::samplerCreateInfo(VkFilter filters, VkSamplerAddressMode samplerAddressMode) {
+VkSamplerCreateInfo vkinit::samplerCreateInfo(VkFilter filter, VkSamplerAddressMode samplerAddressMode) {
   VkSamplerCreateInfo info = {};
   info.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
   info.pNext = nullptr;
 
-  info.magFilter = filters;
-  info.minFilter = filters;
+  info.magFilter = filter;
+  info.minFilter = filter;
   info.addressModeU = samplerAddressMode;
   info.addressModeV = samplerAddressMode;
   info.addressModeW = samplerAddressMode;

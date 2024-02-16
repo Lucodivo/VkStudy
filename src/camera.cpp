@@ -42,9 +42,9 @@ void Camera::turn(f32 yawDelta, f32 pitchDelta) {
   configVectorsFromForward();
 }
 
-void Camera::setForward(vec3 forward) {
-  Assert(magnitude(forward) > 0);
-  vec3 newForward = normalize(forward);
+void Camera::setForward(vec3 dir) {
+  Assert(magnitude(dir) > 0);
+  vec3 newForward = normalize(dir);
 
   // invalid forward
   if(newForward.z > maxPitch_invSine || newForward.z < -maxPitch_invSine) {
@@ -52,7 +52,7 @@ void Camera::setForward(vec3 forward) {
     return;
   }
 
-  this->forward = newForward;
+  forward = newForward;
   configVectorsFromForward();
 }
 
@@ -60,7 +60,7 @@ void Camera::lookAt(vec3 focusPoint) {
   setForward(focusPoint - pos);
 }
 
-mat4 Camera::getViewMatrix() {
+mat4 Camera::getViewMatrix() const {
   mat4 measure{
           right.x, up.x, -forward.x, 0.f,
           right.y, up.y, -forward.y, 0.f,

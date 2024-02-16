@@ -17,7 +17,7 @@ add_executable(
         shader_reflect_test.cpp
 )
 target_link_libraries(shader_reflect_test ${LIBS})
-add_dependencies(shader_reflect_test Shaders)
+add_dependencies(shader_reflect_test build_shaders)
 
 # play_ground_test
 add_executable(

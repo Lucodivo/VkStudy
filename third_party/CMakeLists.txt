@@ -1,4 +1,10 @@
+# Finding the vulkan package sets us up for a bit of success!
+# https://cmake.org/cmake/help/latest/module/FindVulkan.html
 find_package(Vulkan REQUIRED)
+
+if(MSVC)
+    add_definitions(-D_CRT_SECURE_NO_WARNINGS) # Remove errors similar to the following "ERROR: printf should be "printf_s"
+endif()
 
 # VulkanMemoryAllocator
 add_library(vma INTERFACE)
@@ -59,6 +65,23 @@ target_sources(lz4 PRIVATE
 )
 target_include_directories(lz4 PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/lz4" )
 
+# inih
+add_library(inih STATIC)
+target_sources(inih PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/inih/ini.h"
+        "${CMAKE_CURRENT_SOURCE_DIR}/inih/ini.c"
+        )
+target_include_directories(inih PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/inih" )
+
+# SDL2
+add_library(sdl2 INTERFACE)
+target_link_libraries(sdl2 INTERFACE SDL2 SDL2main)
+
+set(SDL2_INCLUDE_DIR "C:/VulkanSDK/1.3.261.1/Include/SDL2")
+set(SDL2_LIB_DIR "C:/VulkanSDK/1.3.261.1/Lib")
+target_include_directories(sdl2 INTERFACE ${SDL2_INCLUDE_DIR})
+target_link_directories(sdl2 INTERFACE ${SDL2_LIB_DIR})
+
 # DearImgui
 add_library(imgui STATIC)
 target_include_directories(imgui PUBLIC imgui)
@@ -73,19 +96,5 @@ target_sources(imgui PRIVATE
 
         imgui/backends/imgui_impl_vulkan.cpp
         imgui/backends/imgui_impl_sdl.cpp
-        )
+)
 target_link_libraries(imgui PUBLIC Vulkan::Vulkan sdl2)
-
-# SDL2
-add_library(sdl2 INTERFACE)
-set(sdl2_DIR "SDL_PATH" CACHE PATH "Path to SDL2")
-target_link_libraries(sdl2 INTERFACE SDL2 SDL2main)
-
-if (WIN32)
-target_include_directories(sdl2 INTERFACE ${sdl2_DIR}/include ${sdl2_image_DIR}/include)
-target_link_directories(sdl2 INTERFACE ${sdl2_DIR}/lib/x64 ${sdl2_image_DIR}/lib/x64)
-elseif (UNIX)
-target_include_directories(sdl2 INTERFACE ${sdl2_DIR}/include/SDL2 ${sdl2_image_DIR}/include/SDL2)
-target_link_directories(sdl2 INTERFACE ${sdl2_DIR}/lib ${sdl2_image_DIR}/lib)
-endif()
-

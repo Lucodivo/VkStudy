@@ -26,8 +26,11 @@
 #define VMA_IMPLEMENTATION
 #include <vk_mem_alloc.h>
 
+#include <ini.h>
+
 #include "types.h"
 #include "vk_types.h"
+#include "window_manager.h"
 #include "noop_math/noop_math.h"
 using namespace noop;
 #include "util.h"
@@ -39,6 +42,7 @@ using namespace noop;
 #include "vk_mesh.h"
 #include "materials.h"
 #include "vk_pipeline_builder.h"
+#include "vk_imgui.h"
 #include "vk_engine.h"
 
 #include "asset_loader.h"
@@ -57,6 +61,6 @@ using namespace noop;
 #include "vk_textures.cpp"
 #include "vk_mesh.cpp"
 #include "vk_pipeline_builder.cpp"
-#include "imgui_util.cpp"
 #include "materials.cpp"
 #include "vk_engine.cpp"
+#include "vk_imgui.cpp"
